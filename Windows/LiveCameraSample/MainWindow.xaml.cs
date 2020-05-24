@@ -43,11 +43,14 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 using Microsoft.Azure.CognitiveServices.Vision.Face;
+using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
 using Newtonsoft.Json.Linq;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using VideoFrameAnalyzer;
 using FaceAPI = Microsoft.Azure.CognitiveServices.Vision.Face;
+using Rect = OpenCvSharp.Rect;
+using Size = OpenCvSharp.Size;
 using VisionAPI = Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 
 namespace LiveCameraSample
@@ -183,6 +186,127 @@ namespace LiveCameraSample
             // Output. 
             return new LiveCameraResult { Faces = faces.ToArray() };
         }
+
+        private Task<LiveCameraResult> OpenCVPeopleDetect(VideoFrame frame)
+        {
+            // Encode image. 
+            var jpg = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
+            // Submit image to API. 
+            //var attrs = new List<FaceAPI.Models.FaceAttributeType> {
+            //    FaceAPI.Models.FaceAttributeType.Age,
+            //    FaceAPI.Models.FaceAttributeType.Gender,
+            //    FaceAPI.Models.FaceAttributeType.HeadPose
+            //};
+            //var faces = await _faceClient.Face.DetectWithStreamAsync(jpg, returnFaceAttributes: attrs);
+            //// Count the API call. 
+            //Properties.Settings.Default.FaceAPICallCount++;
+            //// Output. 
+
+
+            var img = jpg; //Cv2.ImDecode(ImRead(FilePath.Image.Asahiyama, ImreadModes.Color);
+
+           // var detectImg = img.Resize(Size.Zero, 0.5, 0.5);
+
+            var hog = new HOGDescriptor();
+            hog.SetSVMDetector(HOGDescriptor.GetDefaultPeopleDetector());
+
+            bool b = hog.CheckDetectorSize();
+            //            Console.WriteLine("CheckDetectorSize: {0}", b);
+
+            //            var watch = Stopwatch.StartNew();
+
+            // run the detector with default parameters. to get a higher hit-rate
+            // (and more false alarms, respectively), decrease the hitThreshold and
+            // groupThreshold (set groupThreshold to 0 to turn off the grouping completely).
+            //Rect[] found = hog.DetectMultiScale(img, 0, new Size(8, 8), new Size(24, 16), 1.05, 2);
+            Rect[] found = hog.DetectMultiScale(img, winStride: new Size(8, 8), padding: new Size(32, 32), scale: 1.03,
+                                                groupThreshold: 2);
+
+
+            //watch.Stop();
+            //Console.WriteLine("Detection time = {0}ms", watch.ElapsedMilliseconds);
+            //Console.WriteLine("{0} region(s) found", found.Length);
+
+            var faces = new List<DetectedFace>();
+
+            foreach (Rect rect in found)
+            {
+                // the HOG detector returns slightly larger rectangles than the real objects.
+                // so we slightly shrink the rectangles to get a nicer output.
+                var r = new Rect
+                {
+                    X = rect.X + (int)Math.Round(rect.Width * 0.1),
+                    Y = rect.Y + (int)Math.Round(rect.Height * 0.1),
+                    Width = (int)Math.Round(rect.Width * 0.8),
+                    Height = (int)Math.Round(rect.Height * 0.8)
+                };
+                //img.Rectangle(r.TopLeft, r.BottomRight, Scalar.Red, 3);
+
+                var face = new DetectedFace()
+                {
+                    FaceAttributes = new FaceAttributes(),
+                    FaceLandmarks = new FaceLandmarks(),
+                    FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
+                    RecognitionModel = "custom"
+                };
+                faces.Add(face);
+            }
+
+            //using (var window = new Window("people detector", WindowMode.Normal, img))
+            //{
+            //    window.SetProperty(WindowProperty.Fullscreen, 1);
+            //    Cv2.WaitKey(0);
+            //}
+
+            return Task.FromResult(new LiveCameraResult { Faces = faces.ToArray() });
+        }
+
+//        def non_max_suppression_fast(boxes, overlapThresh):
+//    #if there are no boxes, return an empty list
+//	if len(boxes) == 0:
+//		return []
+//#if the bounding boxes integers, convert them to floats --
+//# this is important since we'll be doing a bunch of divisions
+//	if boxes.dtype.kind == "i":
+//		boxes = boxes.astype("float")
+//# initialize the list of picked indexes	
+//	pick = []
+//# grab the coordinates of the bounding boxes
+//	x1 = boxes[:,0]
+//	y1 = boxes[:,1]
+//	x2 = boxes[:,2]
+//	y2 = boxes[:,3]
+//# compute the area of the bounding boxes and sort the bounding
+//# boxes by the bottom-right y-coordinate of the bounding box
+//	area = (x2 - x1 + 1) * (y2 - y1 + 1)
+//	idxs = np.argsort(y2)
+//# keep looping while some indexes still remain in the indexes
+//# list
+//	while len(idxs) > 0:
+//# grab the last index in the indexes list and add the
+//# index value to the list of picked indexes
+//		last = len(idxs) - 1
+//		i = idxs[last]
+//		pick.append(i)
+//# find the largest (x, y) coordinates for the start of
+//# the bounding box and the smallest (x, y) coordinates
+//# for the end of the bounding box
+//		xx1 = np.maximum(x1[i], x1[idxs[:last]])
+//		yy1 = np.maximum(y1[i], y1[idxs[:last]])
+//		xx2 = np.minimum(x2[i], x2[idxs[:last]])
+//		yy2 = np.minimum(y2[i], y2[idxs[:last]])
+//# compute the width and height of the bounding box
+//		w = np.maximum(0, xx2 - xx1 + 1)
+//		h = np.maximum(0, yy2 - yy1 + 1)
+//# compute the ratio of overlap
+//		overlap = (w * h) / area[idxs[:last]]
+//# delete all indexes from the index list that have
+//		idxs = np.delete(idxs, np.concatenate(([last],
+//			np.where(overlap > overlapThresh)[0])))
+//# return only the bounding boxes that were picked using the
+//# integer data type
+//	return boxes[pick].astype("int")
+
 
         /// <summary> Function which submits a frame to the Emotion API. </summary>
         /// <param name="frame"> The video frame to submit. </param>
@@ -331,7 +455,8 @@ namespace LiveCameraSample
                     _grabber.AnalysisFunction = FacesAnalysisFunction;
                     break;
                 case AppMode.Emotions:
-                    _grabber.AnalysisFunction = EmotionAnalysisFunction;
+                    //_grabber.AnalysisFunction = EmotionAnalysisFunction;
+                    _grabber.AnalysisFunction = OpenCVPeopleDetect;
                     break;
                 case AppMode.EmotionsWithClientFaceDetect:
                     // Same as Emotions, except we will display the most recent faces combined with
@@ -382,7 +507,8 @@ namespace LiveCameraSample
             // Record start time, for auto-stop
             _startTime = DateTime.Now;
 
-            await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
+            //await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
+            await _grabber.StartProcessingFileAsync(@"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300.mp4", 15);
         }
 
         private async void StopButton_Click(object sender, RoutedEventArgs e)

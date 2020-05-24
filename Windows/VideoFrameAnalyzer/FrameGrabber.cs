@@ -183,6 +183,35 @@ namespace VideoFrameAnalyzer
             _currCameraIdx = cameraIndex;
         }
 
+        /// <summary> Starts processing frames from a live camera. Stops any current video source
+        ///     before starting the new source. </summary>
+        /// <returns> A Task. </returns>
+        public async Task StartProcessingFileAsync(string fileName, double overrideFPS = 0)
+        {
+            // Check to see if we're re-opening the same camera.
+            if (_reader != null && _reader.CaptureType == CaptureType.File)
+            {
+                return;
+            }
+
+            await StopProcessingAsync().ConfigureAwait(false);
+
+            _reader = VideoCapture.FromFile(fileName);
+            _reader.Open(fileName);
+
+            _fps = overrideFPS;
+
+            if (_fps == 0)
+            {
+                _fps = 30;
+            }
+
+            Width = _reader.FrameWidth;
+            Height = _reader.FrameHeight;
+
+            StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now);
+        }
+
         /// <summary> Starts capturing and processing video frames. </summary>
         /// <param name="frameGrabDelay"> The frame grab delay. </param>
         /// <param name="timestampFn">    Function to generate the timestamp for each frame. This
@@ -216,6 +245,14 @@ namespace VideoFrameAnalyzer
                     Mat image = new Mat();
                     bool success = _reader.Read(image);
 
+                    // Rotate
+                    Mat rotImage = new Mat();
+
+                    Cv2.Transpose(image, rotImage);
+                    Cv2.Flip(rotImage, rotImage, FlipMode.Y);
+                    image.Dispose();
+                    image = rotImage;
+                   
                     LogMessage("Producer: frame-grab took {0} ms", (DateTime.Now - startTime).Milliseconds);
 
                     if (!success)
