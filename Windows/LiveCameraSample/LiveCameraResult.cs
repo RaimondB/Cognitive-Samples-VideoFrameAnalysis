@@ -31,16 +31,22 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // 
 
+using OpenCvSharp;
+using VideoFrameAnalyzer;
 using FaceAPI = Microsoft.Azure.CognitiveServices.Vision.Face.Models;
 using VisionAPI = Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
 
 namespace LiveCameraSample
 {
     // Class to hold all possible result types. 
-    public class LiveCameraResult
+    public class LiveCameraResult : IProvideTempImage
     {
         public FaceAPI.DetectedFace[] Faces { get; set; } = null;
         public string[] CelebrityNames { get; set; } = null;
         public VisionAPI.ImageTag[] Tags { get; set; } = null;
+
+        public Mat TempImage1 { get; set; } = null;
+        public Mat TempImage2 { get; set; } = null;
+
     }
 }

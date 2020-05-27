@@ -84,7 +84,8 @@ namespace LiveCameraSample
                     // Create formatted text--in a particular font at a particular size
                     FormattedText ft = new FormattedText(tag.Name,
                         CultureInfo.CurrentCulture, FlowDirection.LeftToRight, s_typeface,
-                        42 * annotationScale, Brushes.Black);
+                        42 * annotationScale , Brushes.Black, 1);
+
                     // Instead of calling DrawText (which can only draw the text in a solid colour), we
                     // convert to geometry and use DrawGeometry, which allows us to add an outline. 
                     var geom = ft.BuildGeometry(new System.Windows.Point(10 * annotationScale, y));
@@ -145,7 +146,7 @@ namespace LiveCameraSample
                     {
                         FormattedText ft = new FormattedText(summary.ToString(),
                             CultureInfo.CurrentCulture, FlowDirection.LeftToRight, s_typeface,
-                            16 * annotationScale, Brushes.Black);
+                            16 * annotationScale, Brushes.Black, 1);
 
                         var pad = 3 * annotationScale;
 

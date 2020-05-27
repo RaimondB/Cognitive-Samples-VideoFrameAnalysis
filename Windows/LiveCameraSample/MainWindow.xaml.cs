@@ -47,11 +47,14 @@ using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
 using Newtonsoft.Json.Linq;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
+using OpenCvSharp.Dnn;
+
 using VideoFrameAnalyzer;
 using FaceAPI = Microsoft.Azure.CognitiveServices.Vision.Face;
 using Rect = OpenCvSharp.Rect;
 using Size = OpenCvSharp.Size;
 using VisionAPI = Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
+using System.IO;
 
 namespace LiveCameraSample
 {
@@ -152,6 +155,21 @@ namespace LiveCameraSample
                     else
                     {
                         _latestResultsToDisplay = e.Analysis;
+                        var tempProvider = (e.Analysis as IProvideTempImage);
+
+                        if (tempProvider != null)
+                        {
+                            var tempImage1 = tempProvider.TempImage1;
+                            if (tempImage1 != null)
+                            {
+                                TempImage1.Source = tempImage1.ToBitmapSource();
+                            }
+                            var tempImage2 = tempProvider.TempImage2;
+                            if (tempImage2 != null)
+                            {
+                                TempImage2.Source = tempImage2.ToBitmapSource();
+                            }
+                        }
 
                         // Display the image and visualization in the right pane. 
                         if (!_fuseClientRemoteResults)
@@ -219,8 +237,11 @@ namespace LiveCameraSample
             // (and more false alarms, respectively), decrease the hitThreshold and
             // groupThreshold (set groupThreshold to 0 to turn off the grouping completely).
             //Rect[] found = hog.DetectMultiScale(img, 0, new Size(8, 8), new Size(24, 16), 1.05, 2);
-            Rect[] found = hog.DetectMultiScale(img, winStride: new Size(8, 8), padding: new Size(32, 32), scale: 1.03,
-                                                groupThreshold: 2);
+            Rect[] found = hog.DetectMultiScale(img, 
+                                                winStride: new Size(8, 8), 
+                                                padding: new Size(8, 8), 
+                                                scale: 1.05,
+                                                groupThreshold:1);
 
 
             //watch.Stop();
@@ -261,52 +282,390 @@ namespace LiveCameraSample
             return Task.FromResult(new LiveCameraResult { Faces = faces.ToArray() });
         }
 
-//        def non_max_suppression_fast(boxes, overlapThresh):
-//    #if there are no boxes, return an empty list
-//	if len(boxes) == 0:
-//		return []
-//#if the bounding boxes integers, convert them to floats --
-//# this is important since we'll be doing a bunch of divisions
-//	if boxes.dtype.kind == "i":
-//		boxes = boxes.astype("float")
-//# initialize the list of picked indexes	
-//	pick = []
-//# grab the coordinates of the bounding boxes
-//	x1 = boxes[:,0]
-//	y1 = boxes[:,1]
-//	x2 = boxes[:,2]
-//	y2 = boxes[:,3]
-//# compute the area of the bounding boxes and sort the bounding
-//# boxes by the bottom-right y-coordinate of the bounding box
-//	area = (x2 - x1 + 1) * (y2 - y1 + 1)
-//	idxs = np.argsort(y2)
-//# keep looping while some indexes still remain in the indexes
-//# list
-//	while len(idxs) > 0:
-//# grab the last index in the indexes list and add the
-//# index value to the list of picked indexes
-//		last = len(idxs) - 1
-//		i = idxs[last]
-//		pick.append(i)
-//# find the largest (x, y) coordinates for the start of
-//# the bounding box and the smallest (x, y) coordinates
-//# for the end of the bounding box
-//		xx1 = np.maximum(x1[i], x1[idxs[:last]])
-//		yy1 = np.maximum(y1[i], y1[idxs[:last]])
-//		xx2 = np.minimum(x2[i], x2[idxs[:last]])
-//		yy2 = np.minimum(y2[i], y2[idxs[:last]])
-//# compute the width and height of the bounding box
-//		w = np.maximum(0, xx2 - xx1 + 1)
-//		h = np.maximum(0, yy2 - yy1 + 1)
-//# compute the ratio of overlap
-//		overlap = (w * h) / area[idxs[:last]]
-//# delete all indexes from the index list that have
-//		idxs = np.delete(idxs, np.concatenate(([last],
-//			np.where(overlap > overlapThresh)[0])))
-//# return only the bounding boxes that were picked using the
-//# integer data type
-//	return boxes[pick].astype("int")
+        //        def non_max_suppression_fast(boxes, overlapThresh):
+        //    #if there are no boxes, return an empty list
+        //	if len(boxes) == 0:
+        //		return []
+        //#if the bounding boxes integers, convert them to floats --
+        //# this is important since we'll be doing a bunch of divisions
+        //	if boxes.dtype.kind == "i":
+        //		boxes = boxes.astype("float")
+        //# initialize the list of picked indexes	
+        //	pick = []
+        //# grab the coordinates of the bounding boxes
+        //	x1 = boxes[:,0]
+        //	y1 = boxes[:,1]
+        //	x2 = boxes[:,2]
+        //	y2 = boxes[:,3]
+        //# compute the area of the bounding boxes and sort the bounding
+        //# boxes by the bottom-right y-coordinate of the bounding box
+        //	area = (x2 - x1 + 1) * (y2 - y1 + 1)
+        //	idxs = np.argsort(y2)
+        //# keep looping while some indexes still remain in the indexes
+        //# list
+        //	while len(idxs) > 0:
+        //# grab the last index in the indexes list and add the
+        //# index value to the list of picked indexes
+        //		last = len(idxs) - 1
+        //		i = idxs[last]
+        //		pick.append(i)
+        //# find the largest (x, y) coordinates for the start of
+        //# the bounding box and the smallest (x, y) coordinates
+        //# for the end of the bounding box
+        //		xx1 = np.maximum(x1[i], x1[idxs[:last]])
+        //		yy1 = np.maximum(y1[i], y1[idxs[:last]])
+        //		xx2 = np.minimum(x2[i], x2[idxs[:last]])
+        //		yy2 = np.minimum(y2[i], y2[idxs[:last]])
+        //# compute the width and height of the bounding box
+        //		w = np.maximum(0, xx2 - xx1 + 1)
+        //		h = np.maximum(0, yy2 - yy1 + 1)
+        //# compute the ratio of overlap
+        //		overlap = (w * h) / area[idxs[:last]]
+        //# delete all indexes from the index list that have
+        //		idxs = np.delete(idxs, np.concatenate(([last],
+        //			np.where(overlap > overlapThresh)[0])))
+        //# return only the bounding boxes that were picked using the
+        //# integer data type
+        //	return boxes[pick].astype("int")
 
+        private Mat _diffBaseFrame = null;
+        private int _frameCounter = 0;
+        private int _frameDiffGap = 100;
+        private Mat _dilateElement = Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(10, 10));
+
+        //private static string prott1 = @"C:\Users\Raimo\Downloads\MobileNetSSD_deploy.prototxt";
+        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_iter_73000.caffemodel";
+
+        //private static string prott1 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.prototxt";
+        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.caffemodel";
+        //private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromCaffe(prott1, prott2);
+
+
+        //YOLOv3
+        //https://github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
+        private const string Cfg = @"C:\Users\Raimo\Downloads\yolov3.cfg";
+
+        //https://pjreddie.com/media/files/yolov3.weights
+        private const string Weight = @"C:\Users\Raimo\Downloads\yolov3.weights";
+
+        //https://github.com/pjreddie/darknet/blob/master/data/coco.names
+        private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
+
+        //random assign color to each label
+        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
+
+        //get labels from coco.names
+        private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
+
+        private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromDarknet(Cfg, Weight);
+
+
+        private Task<LiveCameraResult> OpenCVDiffContourPeopleDetect(VideoFrame frame)
+        {
+            var faces = new List<DetectedFace>();
+            var result = new LiveCameraResult();
+
+            try
+            {             
+                var image = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
+                if (image == null)
+                {
+                    return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
+                }
+                var frame2 = new Mat();
+
+                var curWidth = image.Width;
+                var factor = 1.0; // 500.0 / curWidth;
+
+                //Cv2.Resize(image, frame2, Size.Zero, fx: factor);
+                Cv2.CopyTo(image, frame2);
+
+                _frameCounter++;
+                _frameCounter %= _frameDiffGap;
+                //if (_frameCounter > 1)
+                {
+                    //(H, W) = frame.shape[:2]
+                    var gray = new Mat();
+                    Cv2.CvtColor(frame2, gray, ColorConversionCodes.BGR2GRAY);
+                    Cv2.GaussianBlur(gray, gray, new Size(21, 21), 0);
+
+                    //if the first frame is None, initialize it
+                    if (_diffBaseFrame == null || _frameCounter == 0)
+                    {
+                        _diffBaseFrame = gray;
+
+                        result.Faces = faces.ToArray();
+                        return Task.FromResult(result);
+                    }
+
+                    var frameDelta = new Mat();
+                    // compute the absolute difference between the current frame and first frame
+                    Cv2.Absdiff(_diffBaseFrame, gray, frameDelta);
+                    var tresh = new Mat();
+                    //Cv2.Threshold(frameDelta, tresh, 25, 255, ThresholdTypes.Binary);
+                    Cv2.Threshold(frameDelta, tresh, 30, 255, ThresholdTypes.Binary|ThresholdTypes.Otsu);
+
+                    
+                    // dilate the thresholded image to fill in holes, then find contours on thresholded image
+                    Cv2.Dilate(tresh, tresh, _dilateElement, iterations: 2);
+
+                    result.TempImage1 = frameDelta;
+                    result.TempImage2 = tresh;
+
+                    Mat[] cnts;
+                    Mat newTresh = new Mat();
+                    Mat hierarchy = new Mat();
+                    tresh.CopyTo(newTresh);
+                    //cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+                    Cv2.FindContours(newTresh, out cnts, hierarchy, RetrievalModes.External, 
+                        ContourApproximationModes.ApproxTC89KCOS);
+
+
+                    List<Rect> boxes = new List<Rect>();
+                    List<double> areas = new List<double>();
+
+                    //ClassifyObjects(image, r);
+
+
+                    //loop over the contours identified
+                    //contourcount = 0
+                    foreach (var c in cnts)
+                    {
+                        //contourcount =  contourcount + 1
+                        var ca = Cv2.ContourArea(c);
+
+                        if(ca < 5000) //ignore small areas.
+                        {
+                            continue;
+                        }
+    
+                        //compute the bounding box for the contour, draw it on the frame,
+                        var r = Cv2.BoundingRect(c);
+                        r.X = (int)(r.X * factor);
+                        r.Y = (int)(r.Y * factor);
+                        r.Width = (int)(r.Width * factor);
+                        r.Height = (int)(r.Height * factor);
+                        //(x, y, w, h) = cv2.boundingRect(c)
+                        //initBB2 =(x,y,w,h)
+                        boxes.Add(r);
+                        areas.Add(ca);
+                    }
+
+                    if (boxes.Count > 0)
+                    {
+                        double maxArea = areas.Max();
+                        var scores = areas.Select(a => (float)(a / maxArea));
+
+                        int[] indices;
+                        //OpenCvSharp.Dnn.CvDnn.NMSBoxes(boxes, scores, 0.3f, 0.4f, out indices);
+                        indices = Enumerable.Range(0, boxes.Count()).ToArray();
+
+                        foreach (int index in indices)
+                        {
+                            Rect r = boxes[index];
+
+                            var face = new DetectedFace()
+                            {
+                                FaceAttributes = new FaceAttributes() { Age = areas[index] },
+                                FaceLandmarks = new FaceLandmarks(),
+                                FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
+                                RecognitionModel = "custom"
+                            };
+                            faces.Add(face);
+                        }
+                    }
+                }
+            }
+            catch(Exception ex)
+            {
+                int a = 1;
+            }
+            result.Faces = faces.ToArray();
+
+            return Task.FromResult(result);
+        }
+
+        //private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
+        //{
+        //    var faces = new List<DetectedFace>();
+        //    var result = new LiveCameraResult();
+
+        //    try
+        //    {
+        //        var image = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
+        //        if (image == null)
+        //        {
+        //            return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
+        //        }
+
+        //        DetectedFace[] detections = ClassifyObjects(image, null);
+
+        //        var face = new DetectedFace()
+        //        {
+        //            FaceAttributes = new FaceAttributes() { Age = areas[index] },
+        //            FaceLandmarks = new FaceLandmarks(),
+        //            FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
+        //            RecognitionModel = "custom"
+        //        };
+        //        faces.Add(face);
+
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        int a = 1;
+        //    }
+        //    result.Faces = faces.ToArray();
+
+        //    return Task.FromResult(result);
+        //}
+
+
+        private void ClassifyObjects(Mat image, Rect boxToAnalyze)
+        {
+            nnet.SetPreferableBackend(Net.Backend.OPENCV);
+            nnet.SetPreferableTarget(Net.Target.CPU);
+
+            //Mat inputBox = image[boxToAnalyze];
+
+            //int maxDimension = Math.Max(inputBox.Width, inputBox.Height);
+
+            //float sizeFactor = 224.0f / maxDimension;
+
+            //Mat input = inputBox.Resize(Size.Zero, sizeFactor, sizeFactor);
+
+            var blob = CvDnn.BlobFromImage(image, 1.0/255, new Size(416, 416), new Scalar(), crop: false);
+            nnet.SetInput(blob);
+
+            //get output layer name
+            var outNames = nnet.GetUnconnectedOutLayersNames();
+
+            //create mats for output layer
+            Mat[] outs = outNames.Select(_ => new Mat()).ToArray();
+
+            //forward model
+            nnet.Forward(outs, outNames);
+
+            const float threshold = 0.5f;       //for confidence 
+            const float nmsThreshold = 0.3f;    //threshold for nms
+
+            GetResult(outs, image, threshold, nmsThreshold);
+
+            //var detections = outs[0];
+
+            //if (detections.Rows > 0)
+            //{
+            //    //trackbox = frame[y: y + h, x: x + w]
+            //    //trackbox = cv2.resize(trackbox, (224, 224))
+            //    //cv2.imshow('image', trackbox) 
+            //    //blob = cv2.dnn.blobFromImage(cv2.resize(trackbox, (300, 300)), 0.007843, (300, 300), 127.5)
+            //    //net.setInput(blob)
+            //    //detections = net.forward()
+
+            //    //for i in np.arange(0, detections.shape[2]):
+            //    foreach (var i in Enumerable.Range(0, detections.Channels()))
+            //    {
+            //        //   confidence = detections[0, 0, i, 2]
+            //        var confidence = detections.Get<float>(0, 0, 1, 2);
+
+            //        //   confidence_level = 0.7
+            //        var confidence_level = 0.7f;
+
+            //        //    if confidence > confidence_level:
+            //        //        # extract the index of the class label from the `detections`, then compute the (x, y)-coordinates of
+            //        //        # the bounding box for the object
+            //        //        idx = int(detections[0, 0, i, 1])
+            //        var idx = detections.Get<int>(0, 0, i, 1);
+
+            //        //        box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            //        //        (startX, startY, endX, endY) = box.astype("int")
+            //        var boxStartX = detections.Get<int>(0, 0, i, 3);
+            //        var boxStartY = detections.Get<int>(0, 0, i, 4);
+            //        var boxEndX = detections.Get<int>(0, 0, i, 5);
+            //        var boxEndY = detections.Get<int>(0, 0, i, 6);
+
+            //        //        # draw the prediction on the frame
+            //        //        label = "{}: {:.2f}%".format(CLASSES[idx],
+            //        //                                     confidence * 100)
+            //        string objectClass;
+            //        CLASSES.TryGetValue(idx, out objectClass);
+            //        var label = $"{objectClass}:{confidence * 100:2f}";
+            //        //        cv2.rectangle(frame, (startX, startY), (endX, endY),
+            //        //                      COLORS[idx], 2)
+            //        //        y = startY - 15 if startY - 15 > 15 else startY + 15
+            //        //        cv2.putText(frame, label, (startX, y),
+            //        //                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+            //    }
+            //}
+        }
+
+        private static void GetResult(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, bool nms = true)
+        {
+            //for nms
+            var classIds = new List<int>();
+            var confidences = new List<float>();
+            var probabilities = new List<float>();
+            var boxes = new List<Rect2d>();
+
+            var w = image.Width;
+            var h = image.Height;
+            /*
+             YOLO3 COCO trainval output
+             0 1 : center                    2 3 : w/h
+             4 : confidence                  5 ~ 84 : class probability 
+            */
+            const int prefix = 5;   //skip 0~4
+
+            foreach (var prob in output)
+            {
+                for (var i = 0; i < prob.Rows; i++)
+                {
+                    var confidence = prob.At<float>(i, 4);
+                    if (confidence > threshold)
+                    {
+                        //get classes probability
+                        Cv2.MinMaxLoc(prob.Row(i).ColRange(prefix, prob.Cols), out _, out OpenCvSharp.Point max);
+                        var classes = max.X;
+                        var probability = prob.At<float>(i, classes + prefix);
+
+                        if (probability > threshold) //more accuracy, you can cancel it
+                        {
+                            //get center and width/height
+                            var centerX = prob.At<float>(i, 0) * w;
+                            var centerY = prob.At<float>(i, 1) * h;
+                            var width = prob.At<float>(i, 2) * w;
+                            var height = prob.At<float>(i, 3) * h;
+
+                            //if (!nms)
+                            //{
+                            //    // draw result (if don't use NMSBoxes)
+                            //    Draw(image, classes, confidence, probability, centerX, centerY, width, height);
+                            //    continue;
+                            //}
+
+                            //put data to list for NMSBoxes
+                            classIds.Add(classes);
+                            confidences.Add(confidence);
+                            probabilities.Add(probability);
+                            boxes.Add(new Rect2d(centerX, centerY, width, height));
+                        }
+                    }
+                }
+            }
+
+            if (!nms) return;
+
+            //using non-maximum suppression to reduce overlapping low confidence box
+            CvDnn.NMSBoxes(boxes, confidences, threshold, nmsThreshold, out int[] indices);
+
+            Console.WriteLine($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
+
+            foreach (var i in indices)
+            {
+                var box = boxes[i];
+                //Draw(image, classIds[i], confidences[i], probabilities[i], box.X, box.Y, box.Width, box.Height);
+            }
+
+        }
 
         /// <summary> Function which submits a frame to the Emotion API. </summary>
         /// <param name="frame"> The video frame to submit. </param>
@@ -452,7 +811,7 @@ namespace LiveCameraSample
             switch (_mode)
             {
                 case AppMode.Faces:
-                    _grabber.AnalysisFunction = FacesAnalysisFunction;
+                    _grabber.AnalysisFunction = OpenCVDiffContourPeopleDetect;
                     break;
                 case AppMode.Emotions:
                     //_grabber.AnalysisFunction = EmotionAnalysisFunction;
@@ -502,13 +861,23 @@ namespace LiveCameraSample
             _grabber.TriggerAnalysisOnInterval(Properties.Settings.Default.AnalysisInterval);
 
             // Reset message. 
-            MessageArea.Text = "";
+            MessageArea.Text = "hallo";
 
             // Record start time, for auto-stop
             _startTime = DateTime.Now;
 
+            _diffBaseFrame = null;
+            _frameCounter = 0;
+
             //await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
-            await _grabber.StartProcessingFileAsync(@"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300.mp4", 15);
+            await _grabber.StartProcessingFileAsync(
+                @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 30, RotateFlags.Rotate90Clockwise);
+
+            //await _grabber.StartProcessingFileAsync(
+            //    @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, null);
+            //    //@"C:\Users\raimo\Downloads\HIKVISION - DS - 2CD2143G0 - I - 20200518 - 194212.mp4", 15);
+
+            
         }
 
         private async void StopButton_Click(object sender, RoutedEventArgs e)
