@@ -32,7 +32,7 @@
 //
 
 // Uncomment this to enable the LogMessage function, which can with debugging timing issues.
-// #define TRACE_GRABBER
+//#define TRACE_GRABBER
 
 using System;
 using System.Collections.Concurrent;
@@ -43,6 +43,12 @@ using OpenCvSharp;
 
 namespace VideoFrameAnalyzer
 {
+    public interface IProvideTempImage
+    {
+        Mat TempImage1 { get; }
+        Mat TempImage2 { get; }
+    }
+
     /// <summary> A frame grabber. </summary>
     /// <typeparam name="AnalysisResultType"> Type of the analysis result. This is the type that
     ///     the AnalysisFunction will return, when it calls some API on a video frame. </typeparam>
@@ -123,6 +129,8 @@ namespace VideoFrameAnalyzer
 
         protected Predicate<VideoFrame> _analysisPredicate = null;
         protected VideoCapture _reader = null;
+        protected bool _readerIsContinuous = false;
+
         protected Timer _timer = null;
         protected SemaphoreSlim _timerMutex = new SemaphoreSlim(1);
         protected AutoResetEvent _frameGrabTimer = new AutoResetEvent(false);
@@ -156,7 +164,7 @@ namespace VideoFrameAnalyzer
         /// <summary> Starts processing frames from a live camera. Stops any current video source
         ///     before starting the new source. </summary>
         /// <returns> A Task. </returns>
-        public async Task StartProcessingCameraAsync(int cameraIndex = 0, double overrideFPS = 0)
+        public async Task StartProcessingCameraAsync(int cameraIndex = 0, double overrideFPS = 0, RotateFlags? rotateFlags = null)
         {
             // Check to see if we're re-opening the same camera.
             if (_reader != null && _reader.CaptureType == CaptureType.Camera && cameraIndex == _currCameraIdx)
@@ -178,15 +186,15 @@ namespace VideoFrameAnalyzer
             Width = _reader.FrameWidth;
             Height = _reader.FrameHeight;
 
-            StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now);
-
+            StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now, rotateFlags);
+            
             _currCameraIdx = cameraIndex;
         }
 
         /// <summary> Starts processing frames from a live camera. Stops any current video source
         ///     before starting the new source. </summary>
         /// <returns> A Task. </returns>
-        public async Task StartProcessingFileAsync(string fileName, double overrideFPS = 0)
+        public async Task StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
         {
             // Check to see if we're re-opening the same camera.
             if (_reader != null && _reader.CaptureType == CaptureType.File)
@@ -196,27 +204,37 @@ namespace VideoFrameAnalyzer
 
             await StopProcessingAsync().ConfigureAwait(false);
 
-            _reader = VideoCapture.FromFile(fileName);
-            _reader.Open(fileName);
+            _reader = new VideoCapture(fileName);
+            _readerIsContinuous = isContinuousStream;
+            //VideoCapture.FromFile(fileName);//, VideoCaptureAPIs.OPENCV_MJPEG);
+            //_reader.Open(fileName);
 
             _fps = overrideFPS;
 
             if (_fps == 0)
             {
-                _fps = 30;
+                var rFpds = _reader.Fps;
+                if (rFpds == 0)
+                {
+                    _fps = 30;
+                }
+                else
+                {
+                    _fps = rFpds;
+                }
             }
 
             Width = _reader.FrameWidth;
             Height = _reader.FrameHeight;
 
-            StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now);
+            StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now, rotateFlags);
         }
 
         /// <summary> Starts capturing and processing video frames. </summary>
         /// <param name="frameGrabDelay"> The frame grab delay. </param>
         /// <param name="timestampFn">    Function to generate the timestamp for each frame. This
         ///     function will get called once per frame. </param>
-        protected void StartProcessing(TimeSpan frameGrabDelay, Func<DateTime> timestampFn)
+        protected void StartProcessing(TimeSpan frameGrabDelay, Func<DateTime> timestampFn, RotateFlags? rotateFlags)
         {
             OnProcessingStarting();
 
@@ -245,20 +263,12 @@ namespace VideoFrameAnalyzer
                     Mat image = new Mat();
                     bool success = _reader.Read(image);
 
-                    // Rotate
-                    Mat rotImage = new Mat();
-
-                    Cv2.Transpose(image, rotImage);
-                    Cv2.Flip(rotImage, rotImage, FlipMode.Y);
-                    image.Dispose();
-                    image = rotImage;
-                   
                     LogMessage("Producer: frame-grab took {0} ms", (DateTime.Now - startTime).Milliseconds);
 
                     if (!success)
                     {
                         // If we've reached the end of the video, stop here.
-                        if (_reader.CaptureType == CaptureType.File)
+                        if (!_readerIsContinuous)
                         {
                             LogMessage("Producer: null frame from video file, stop!");
                             // This will call StopProcessing on a new thread.
@@ -273,6 +283,15 @@ namespace VideoFrameAnalyzer
                             LogMessage("Producer: null frame from live camera, continue!");
                             continue;
                         }
+                    }
+
+                    if (rotateFlags.HasValue)
+                    {
+                        Mat rotImage = new Mat();
+                        Cv2.Rotate(image, rotImage, rotateFlags.Value);
+
+                        image.Dispose();
+                        image = rotImage;
                     }
 
                     // Package the image for submission.
@@ -554,12 +573,14 @@ namespace VideoFrameAnalyzer
                     }
                     else
                     {
+                        LogMessage("DoAnalysis: Timeout from task {0}", task.Id);
                         output.TimedOut = true;
                     }
                 }
                 catch (Exception ae)
                 {
                     output.Exception = ae;
+                    LogMessage("DoAnalysis: Exception from task {0}:{1}", task.Id, ae.Message);
                 }
 
                 LogMessage("DoAnalysis: returned from task {0}", task.Id);

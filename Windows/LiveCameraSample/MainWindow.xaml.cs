@@ -55,6 +55,7 @@ using Rect = OpenCvSharp.Rect;
 using Size = OpenCvSharp.Size;
 using VisionAPI = Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
 using System.IO;
+using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
 
 namespace LiveCameraSample
 {
@@ -88,6 +89,9 @@ namespace LiveCameraSample
         {
             InitializeComponent();
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+
+            //nnet.SetPreferableBackend(Net.Backend.OPENCV);
+            //nnet.SetPreferableTarget(Net.Target.CPU);
 
             // Create grabber. 
             _grabber = new FrameGrabber<LiveCameraResult>();
@@ -182,6 +186,41 @@ namespace LiveCameraSample
 
             // Create local face detector. 
             _localFaceDetector.Load("Data/haarcascade_frontalface_alt2.xml");
+
+            InitNeuralNet();
+        }
+
+        string[] _outNames;
+        //private static string prott1 = @"C:\Users\Raimo\Downloads\MobileNetSSD_deploy.prototxt";
+        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_iter_73000.caffemodel";
+
+        //private static string prott1 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.prototxt";
+        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.caffemodel";
+        //private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromCaffe(prott1, prott2);
+
+
+        //YOLOv3
+        //https://github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
+        private const string Cfg = @"C:\Users\Raimo\Downloads\yolov3.cfg";
+
+        //https://pjreddie.com/media/files/yolov3.weights
+        private const string Weight = @"C:\Users\Raimo\Downloads\yolov3.weights";
+
+        //https://github.com/pjreddie/darknet/blob/master/data/coco.names
+        private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
+
+        //random assign color to each label
+        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
+
+        //get labels from coco.names
+        private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
+
+        private OpenCvSharp.Dnn.Net nnet;
+
+        private void InitNeuralNet()
+        {
+            nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromDarknet(Cfg, Weight);
+            _outNames = nnet.GetUnconnectedOutLayersNames();
         }
 
         /// <summary> Function which submits a frame to the Face API. </summary>
@@ -209,17 +248,6 @@ namespace LiveCameraSample
         {
             // Encode image. 
             var jpg = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
-            // Submit image to API. 
-            //var attrs = new List<FaceAPI.Models.FaceAttributeType> {
-            //    FaceAPI.Models.FaceAttributeType.Age,
-            //    FaceAPI.Models.FaceAttributeType.Gender,
-            //    FaceAPI.Models.FaceAttributeType.HeadPose
-            //};
-            //var faces = await _faceClient.Face.DetectWithStreamAsync(jpg, returnFaceAttributes: attrs);
-            //// Count the API call. 
-            //Properties.Settings.Default.FaceAPICallCount++;
-            //// Output. 
-
 
             var img = jpg; //Cv2.ImDecode(ImRead(FilePath.Image.Asahiyama, ImreadModes.Color);
 
@@ -267,7 +295,7 @@ namespace LiveCameraSample
                 {
                     FaceAttributes = new FaceAttributes(),
                     FaceLandmarks = new FaceLandmarks(),
-                    FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
+                    FaceRectangle = new FaceAPI.Models.FaceRectangle(r.Width, r.Height, r.X, r.Y),
                     RecognitionModel = "custom"
                 };
                 faces.Add(face);
@@ -333,31 +361,6 @@ namespace LiveCameraSample
         private int _frameDiffGap = 100;
         private Mat _dilateElement = Cv2.GetStructuringElement(MorphShapes.Ellipse, new Size(10, 10));
 
-        //private static string prott1 = @"C:\Users\Raimo\Downloads\MobileNetSSD_deploy.prototxt";
-        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_iter_73000.caffemodel";
-
-        //private static string prott1 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.prototxt";
-        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.caffemodel";
-        //private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromCaffe(prott1, prott2);
-
-
-        //YOLOv3
-        //https://github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
-        private const string Cfg = @"C:\Users\Raimo\Downloads\yolov3.cfg";
-
-        //https://pjreddie.com/media/files/yolov3.weights
-        private const string Weight = @"C:\Users\Raimo\Downloads\yolov3.weights";
-
-        //https://github.com/pjreddie/darknet/blob/master/data/coco.names
-        private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
-
-        //random assign color to each label
-        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
-
-        //get labels from coco.names
-        private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
-
-        private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromDarknet(Cfg, Weight);
 
 
         private Task<LiveCameraResult> OpenCVDiffContourPeopleDetect(VideoFrame frame)
@@ -468,7 +471,7 @@ namespace LiveCameraSample
                             {
                                 FaceAttributes = new FaceAttributes() { Age = areas[index] },
                                 FaceLandmarks = new FaceLandmarks(),
-                                FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
+                                FaceRectangle = new FaceAPI.Models.FaceRectangle(r.Width, r.Height, r.X, r.Y),
                                 RecognitionModel = "custom"
                             };
                             faces.Add(face);
@@ -485,120 +488,55 @@ namespace LiveCameraSample
             return Task.FromResult(result);
         }
 
-        //private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
-        //{
-        //    var faces = new List<DetectedFace>();
-        //    var result = new LiveCameraResult();
-
-        //    try
-        //    {
-        //        var image = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
-        //        if (image == null)
-        //        {
-        //            return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
-        //        }
-
-        //        DetectedFace[] detections = ClassifyObjects(image, null);
-
-        //        var face = new DetectedFace()
-        //        {
-        //            FaceAttributes = new FaceAttributes() { Age = areas[index] },
-        //            FaceLandmarks = new FaceLandmarks(),
-        //            FaceRectangle = new FaceRectangle(r.Width, r.Height, r.X, r.Y),
-        //            RecognitionModel = "custom"
-        //        };
-        //        faces.Add(face);
-
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        int a = 1;
-        //    }
-        //    result.Faces = faces.ToArray();
-
-        //    return Task.FromResult(result);
-        //}
-
-
-        private void ClassifyObjects(Mat image, Rect boxToAnalyze)
+        private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {
-            nnet.SetPreferableBackend(Net.Backend.OPENCV);
-            nnet.SetPreferableTarget(Net.Target.CPU);
+            LiveCameraResult result;
 
-            //Mat inputBox = image[boxToAnalyze];
+            try
+            {
+                var image = frame.Image;
+                if (image == null)
+                {
+                    return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
+                }
 
-            //int maxDimension = Math.Max(inputBox.Width, inputBox.Height);
+                var watch = new Stopwatch();
+                watch.Start();
 
-            //float sizeFactor = 224.0f / maxDimension;
+                result = ClassifyObjects(image, Rect.Empty);
 
-            //Mat input = inputBox.Resize(Size.Zero, sizeFactor, sizeFactor);
+                watch.Stop();
+                ConcurrentLogger.WriteLine($"Classifiy-objects ms:{watch.ElapsedMilliseconds}");
+            }
+            catch (Exception ex)
+            {
+                result = new LiveCameraResult();
+                ConcurrentLogger.WriteLine($"Exception in analysis:{ex.Message}");
+            }
+            
 
-            var blob = CvDnn.BlobFromImage(image, 1.0/255, new Size(416, 416), new Scalar(), crop: false);
+            return Task.FromResult(result);
+        }
+
+        private LiveCameraResult ClassifyObjects(Mat image, Rect boxToAnalyze)
+        {
+
+            var blob = CvDnn.BlobFromImage(image, 1.0/255, new Size(320, 320), new Scalar(), crop: false);
             nnet.SetInput(blob);
 
-            //get output layer name
-            var outNames = nnet.GetUnconnectedOutLayersNames();
-
             //create mats for output layer
-            Mat[] outs = outNames.Select(_ => new Mat()).ToArray();
+            Mat[] outs = Enumerable.Repeat(false, _outNames.Length).Select( _ => new Mat()).ToArray();
 
             //forward model
-            nnet.Forward(outs, outNames);
+            nnet.Forward(outs, _outNames);
 
             const float threshold = 0.5f;       //for confidence 
             const float nmsThreshold = 0.3f;    //threshold for nms
 
-            GetResult(outs, image, threshold, nmsThreshold);
-
-            //var detections = outs[0];
-
-            //if (detections.Rows > 0)
-            //{
-            //    //trackbox = frame[y: y + h, x: x + w]
-            //    //trackbox = cv2.resize(trackbox, (224, 224))
-            //    //cv2.imshow('image', trackbox) 
-            //    //blob = cv2.dnn.blobFromImage(cv2.resize(trackbox, (300, 300)), 0.007843, (300, 300), 127.5)
-            //    //net.setInput(blob)
-            //    //detections = net.forward()
-
-            //    //for i in np.arange(0, detections.shape[2]):
-            //    foreach (var i in Enumerable.Range(0, detections.Channels()))
-            //    {
-            //        //   confidence = detections[0, 0, i, 2]
-            //        var confidence = detections.Get<float>(0, 0, 1, 2);
-
-            //        //   confidence_level = 0.7
-            //        var confidence_level = 0.7f;
-
-            //        //    if confidence > confidence_level:
-            //        //        # extract the index of the class label from the `detections`, then compute the (x, y)-coordinates of
-            //        //        # the bounding box for the object
-            //        //        idx = int(detections[0, 0, i, 1])
-            //        var idx = detections.Get<int>(0, 0, i, 1);
-
-            //        //        box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-            //        //        (startX, startY, endX, endY) = box.astype("int")
-            //        var boxStartX = detections.Get<int>(0, 0, i, 3);
-            //        var boxStartY = detections.Get<int>(0, 0, i, 4);
-            //        var boxEndX = detections.Get<int>(0, 0, i, 5);
-            //        var boxEndY = detections.Get<int>(0, 0, i, 6);
-
-            //        //        # draw the prediction on the frame
-            //        //        label = "{}: {:.2f}%".format(CLASSES[idx],
-            //        //                                     confidence * 100)
-            //        string objectClass;
-            //        CLASSES.TryGetValue(idx, out objectClass);
-            //        var label = $"{objectClass}:{confidence * 100:2f}";
-            //        //        cv2.rectangle(frame, (startX, startY), (endX, endY),
-            //        //                      COLORS[idx], 2)
-            //        //        y = startY - 15 if startY - 15 > 15 else startY + 15
-            //        //        cv2.putText(frame, label, (startX, y),
-            //        //                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
-            //    }
-            //}
+            return GetResult(outs, image, threshold, nmsThreshold, 1.0f);
         }
 
-        private static void GetResult(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, bool nms = true)
+        private LiveCameraResult GetResult(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, float scaleFactor, bool nms = true)
         {
             //for nms
             var classIds = new List<int>();
@@ -630,11 +568,13 @@ namespace LiveCameraSample
                         if (probability > threshold) //more accuracy, you can cancel it
                         {
                             //get center and width/height
-                            var centerX = prob.At<float>(i, 0) * w;
-                            var centerY = prob.At<float>(i, 1) * h;
-                            var width = prob.At<float>(i, 2) * w;
-                            var height = prob.At<float>(i, 3) * h;
+                            var centerX = prob.At<float>(i, 0) * w * scaleFactor;
+                            var centerY = prob.At<float>(i, 1) * h * scaleFactor;
+                            var width = prob.At<float>(i, 2) * w * scaleFactor;
+                            var height = prob.At<float>(i, 3) * h * scaleFactor;
 
+                            float X = centerX - (width / 2.0f);
+                            float Y = centerY - (height / 2.0f);
                             //if (!nms)
                             //{
                             //    // draw result (if don't use NMSBoxes)
@@ -646,25 +586,45 @@ namespace LiveCameraSample
                             classIds.Add(classes);
                             confidences.Add(confidence);
                             probabilities.Add(probability);
-                            boxes.Add(new Rect2d(centerX, centerY, width, height));
+                            boxes.Add(new Rect2d(X, Y, width, height));
                         }
                     }
                 }
             }
 
-            if (!nms) return;
+            //if (!nms) return;
 
+            int[] indices;
             //using non-maximum suppression to reduce overlapping low confidence box
-            CvDnn.NMSBoxes(boxes, confidences, threshold, nmsThreshold, out int[] indices);
+            indices = Enumerable.Range(0, boxes.Count()).ToArray();
+            //CvDnn.NMSBoxes(boxes, confidences, threshold, nmsThreshold, out indices);
 
-            Console.WriteLine($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
+            //ConcurrentLogger.WriteLine($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
+
+            LiveCameraResult result = new LiveCameraResult();
+            List<DetectedFace> faces = new List<DetectedFace>();
+            List<ImageTag> tags = new List<ImageTag>(); 
 
             foreach (var i in indices)
             {
                 var box = boxes[i];
                 //Draw(image, classIds[i], confidences[i], probabilities[i], box.X, box.Y, box.Width, box.Height);
+
+                var face = new DetectedFace()
+                {
+                    FaceAttributes = new FaceAttributes() { Age = classIds[i], Smile = probabilities[i] },
+                    FaceLandmarks = new FaceLandmarks(),
+                    FaceRectangle = new FaceAPI.Models.FaceRectangle((int)box.Width, (int)box.Height, (int)box.X, (int)box.Y),
+                    RecognitionModel = "custom"
+                };
+                faces.Add(face);
+                tags.Add(new ImageTag(Labels[classIds[i]], confidences[i]));
             }
 
+            result.Faces = faces.ToArray();
+            result.Tags = tags.ToArray();
+
+            return result;
         }
 
         /// <summary> Function which submits a frame to the Emotion API. </summary>
@@ -824,7 +784,7 @@ namespace LiveCameraSample
                     _fuseClientRemoteResults = true;
                     break;
                 case AppMode.Tags:
-                    _grabber.AnalysisFunction = TaggingAnalysisFunction;
+                    _grabber.AnalysisFunction = OpenCVDNNYoloPeopleDetect;
                     break;
                 case AppMode.Celebrities:
                     _grabber.AnalysisFunction = CelebrityAnalysisFunction;
@@ -837,6 +797,11 @@ namespace LiveCameraSample
 
         private async void StartButton_Click(object sender, RoutedEventArgs e)
         {
+            LeftImage.Source = null;
+            RightImage.Source = null;
+            TempImage1.Source = null;
+            TempImage2.Source = null;
+
             if (!CameraList.HasItems)
             {
                 MessageArea.Text = "No cameras found; cannot start processing";
@@ -870,14 +835,22 @@ namespace LiveCameraSample
             _frameCounter = 0;
 
             //await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
-            await _grabber.StartProcessingFileAsync(
-                @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 30, RotateFlags.Rotate90Clockwise);
-
             //await _grabber.StartProcessingFileAsync(
-            //    @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, null);
+            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 30, RotateFlags.Rotate90Clockwise);
+
+            //            await _grabber.StartProcessingFileAsync(
+            //              @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, null);
             //    //@"C:\Users\raimo\Downloads\HIKVISION - DS - 2CD2143G0 - I - 20200518 - 194212.mp4", 15);
 
-            
+            //await _grabber.StartProcessingFileAsync(
+            //    @"rtsp://admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub", 30, RotateFlags.Rotate90Clockwise);
+
+
+        //rtsp://admin:examplepass123!@192.168.1.100:554/Streaming/Channels/101/
+            await _grabber.StartProcessingFileAsync(
+                @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102");
+        //rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoMain
+            //M3s!Ew9JEH*#
         }
 
         private async void StopButton_Click(object sender, RoutedEventArgs e)
