@@ -245,7 +245,7 @@ namespace VideoFrameAnalyzer
             var timerIterations = 0;
 
             // Create a background thread that will grab frames in a loop.
-            _producerTask = Task.Factory.StartNew(() =>
+            _producerTask = Task.Run(() =>
             {
                 var frameCount = 0;
                 while (!_stopping)
@@ -290,7 +290,6 @@ namespace VideoFrameAnalyzer
                         Mat rotImage = new Mat();
                         Cv2.Rotate(image, rotImage, rotateFlags.Value);
 
-                        image.Dispose();
                         image = rotImage;
                     }
 
@@ -340,9 +339,9 @@ namespace VideoFrameAnalyzer
                 _timer = null;
 
                 LogMessage("Producer: stopped");
-            }, TaskCreationOptions.LongRunning);
+            });
 
-            _consumerTask = Task.Factory.StartNew(async () =>
+            _consumerTask = Task.Run(async () =>
             {
                 while (!_analysisTaskQueue.IsCompleted)
                 {
@@ -377,7 +376,7 @@ namespace VideoFrameAnalyzer
                 }
 
                 LogMessage("Consumer: stopped");
-            }, TaskCreationOptions.LongRunning);
+            });
 
             // Set up a timer object that will trigger the frame-grab at a regular interval.
             _timer = new Timer(async s /* state */ =>
