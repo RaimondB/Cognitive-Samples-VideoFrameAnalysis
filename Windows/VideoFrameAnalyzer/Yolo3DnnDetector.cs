@@ -100,8 +100,8 @@ namespace VideoFrameAnalyzer
                             var width = prob.At<float>(i, 2) * w * scaleFactor;
                             var height = prob.At<float>(i, 3) * h * scaleFactor;
 
-                            float X = centerX - (width / 2.0f);
-                            float Y = centerY - (height / 2.0f);
+                            float X = Math.Max(0, centerX - (width / 2.0f));
+                            float Y = Math.Max(0, centerY - (height / 2.0f));
 
                             //put data to list for NMSBoxes
                             classIds.Add(classes);

@@ -32,44 +32,34 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Threading.Tasks;
 using Microsoft.Azure.CognitiveServices.Vision.Face;
 using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
+using OpenCvSharp;
 using VideoFrameAnalyzer;
 
 namespace BasicConsoleSample
 {
     internal class Program
     {
-        const string ApiKey = "<your API key>";
-        const string Endpoint = "https://westus.api.cognitive.microsoft.com";
-
         private static void Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             // Create grabber. 
-            FrameGrabber<DetectedFace[]> grabber = new FrameGrabber<DetectedFace[]>();
-
-            // Create Face API Client.
-            FaceClient faceClient = new FaceClient(new ApiKeyServiceClientCredentials(ApiKey))
-            {
-                Endpoint = Endpoint
-            };
+            var grabber = new FrameGrabber<DnnDetectedObject[]>();
 
             // Set up a listener for when we acquire a new frame.
             grabber.NewFrameProvided += (s, e) =>
             {
-                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
+//                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
             };
 
             // Set up Face API call.
-            grabber.AnalysisFunction = async frame =>
-            {
-                Console.WriteLine($"Submitting frame acquired at {frame.Metadata.Timestamp}");
-                // Encode image and submit to Face API. 
-                return (await faceClient.Face.DetectWithStreamAsync(frame.Image.ToMemoryStream(".jpg"))).ToArray();
-            };
+            grabber.AnalysisFunction = OpenCVDNNYoloPeopleDetect;
 
             // Set up a listener for when we receive a new result from an API call. 
             grabber.NewResultAvailable += (s, e) =>
@@ -79,7 +69,13 @@ namespace BasicConsoleSample
                 else if (e.Exception != null)
                     Console.WriteLine($"API call threw an exception: {e.Exception}");
                 else
-                    Console.WriteLine($"New result received for frame acquired at {e.Frame.Metadata.Timestamp}. {e.Analysis.Length} faces detected");
+                {
+                    Console.WriteLine($"New result received for frame acquired at {e.Frame.Metadata.Timestamp}. {e.Analysis.Length} objects detected");
+                    foreach (var dObj in e.Analysis)
+                    {
+                        Console.WriteLine($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
+                    }
+                }
             };
 
             // Tell grabber when to call API.
@@ -87,7 +83,15 @@ namespace BasicConsoleSample
             grabber.TriggerAnalysisOnInterval(TimeSpan.FromMilliseconds(3000));
 
             // Start running in the background.
-            grabber.StartProcessingCameraAsync().Wait();
+            //grabber.StartProcessingCameraAsync().Wait();
+
+            grabber.StartProcessingFileAsync(
+                @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
+                rotateFlags: RotateFlags.Rotate90Clockwise
+                , overrideFPS: 15
+            ).Wait();
+
+
 
             // Wait for keypress to stop
             Console.WriteLine("Press any key to stop...");
@@ -96,5 +100,45 @@ namespace BasicConsoleSample
             // Stop, blocking until done.
             grabber.StopProcessingAsync().Wait();
         }
+
+        private static Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
+
+        private static Task<DnnDetectedObject[]> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
+        {
+            var image = frame.Image;
+            if (image == null || image.Width <= 0 || image.Height <= 0)
+            {
+                return Task.FromResult(new DnnDetectedObject[0]);
+            }
+
+            Func<DnnDetectedObject[]> detector = () =>
+            {
+                DnnDetectedObject[] result;
+
+                try
+                {
+                    var watch = new Stopwatch();
+                    watch.Start();
+
+                    result = _dnnDetector.ClassifyObjects(image, Rect.Empty);
+
+                    watch.Stop();
+                    ConcurrentLogger.WriteLine($"Classifiy-objects ms:{watch.ElapsedMilliseconds}");
+                }
+                catch (Exception ex)
+                {
+                    result = new DnnDetectedObject[0];
+                    ConcurrentLogger.WriteLine($"Exception in analysis:{ex.Message}");
+                }
+
+                return result;
+            };
+
+            //var result2 = detector();
+            //return Task.FromResult(result2);
+
+            return Task.Run(() => detector());
+        }
+
     }
 }

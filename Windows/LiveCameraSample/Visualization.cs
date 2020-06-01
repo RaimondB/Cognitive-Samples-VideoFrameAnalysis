@@ -49,24 +49,32 @@ namespace LiveCameraSample
 
         private static BitmapSource DrawOverlay(BitmapSource baseImage, Action<DrawingContext, double> drawAction)
         {
-            double annotationScale = baseImage.PixelHeight / 320;
+            try
+            {
+                double annotationScale = baseImage.PixelHeight / 320;
 
-            DrawingVisual visual = new DrawingVisual();
-            DrawingContext drawingContext = visual.RenderOpen();
+                DrawingVisual visual = new DrawingVisual();
+                DrawingContext drawingContext = visual.RenderOpen();
 
-            drawingContext.DrawImage(baseImage, new Rect(0, 0, baseImage.Width, baseImage.Height));
+                drawingContext.DrawImage(baseImage, new Rect(0, 0, baseImage.Width, baseImage.Height));
 
-            drawAction(drawingContext, annotationScale);
+                drawAction(drawingContext, annotationScale);
 
-            drawingContext.Close();
+                drawingContext.Close();
 
-            RenderTargetBitmap outputBitmap = new RenderTargetBitmap(
-                baseImage.PixelWidth, baseImage.PixelHeight,
-                baseImage.DpiX, baseImage.DpiY, PixelFormats.Pbgra32);
+                RenderTargetBitmap outputBitmap = new RenderTargetBitmap(
+                    baseImage.PixelWidth, baseImage.PixelHeight,
+                    baseImage.DpiX, baseImage.DpiY, PixelFormats.Pbgra32);
 
-            outputBitmap.Render(visual);
+                outputBitmap.Render(visual);
 
-            return outputBitmap;
+                return outputBitmap;
+            }
+            catch(Exception ex)
+            {
+                int a = 1;
+                return baseImage;
+            }
         }
 
         public static BitmapSource DrawTags(BitmapSource baseImage, VisionAPI.Models.ImageTag[] tags)
@@ -136,6 +144,12 @@ namespace LiveCameraSample
                     faceRect.Inflate(6 * annotationScale, 6 * annotationScale);
 
                     double lineThickness = 4 * annotationScale;
+
+
+                    faceRect.X = Math.Max(0, faceRect.X);
+                    faceRect.Y = Math.Max(0, faceRect.Y);
+                    faceRect.Width = Math.Max(0, faceRect.Width);
+                    faceRect.Height = Math.Max(0, faceRect.Height);
 
                     drawingContext.DrawRectangle(
                         Brushes.Transparent,

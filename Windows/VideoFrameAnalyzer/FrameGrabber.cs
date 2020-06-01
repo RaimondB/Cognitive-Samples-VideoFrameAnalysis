@@ -202,9 +202,9 @@ namespace VideoFrameAnalyzer
                 return;
             }
 
-            await StopProcessingAsync().ConfigureAwait(false);
+            await StopProcessingAsync();//.ConfigureAwait(false);
 
-            _reader = new VideoCapture(fileName);
+            _reader = new VideoCapture(fileName, VideoCaptureAPIs.FFMPEG);
             _readerIsContinuous = isContinuousStream;
             //VideoCapture.FromFile(fileName);//, VideoCaptureAPIs.OPENCV_MJPEG);
             //_reader.Open(fileName);
@@ -237,7 +237,7 @@ namespace VideoFrameAnalyzer
         protected void StartProcessing(TimeSpan frameGrabDelay, Func<DateTime> timestampFn, RotateFlags? rotateFlags)
         {
             OnProcessingStarting();
-
+            //SynchronizationContext syncCtx = SynchronizationContext.Current;
             _resetTrigger = true;
             _frameGrabTimer.Reset();
             _analysisTaskQueue = new BlockingCollection<Task<NewResultEventArgs>>();
@@ -248,7 +248,7 @@ namespace VideoFrameAnalyzer
             _producerTask = Task.Run(() =>
             {
                 var frameCount = 0;
-                while (!_stopping)
+                while (!_stopping && _reader.IsOpened())
                 {
                     LogMessage("Producer: waiting for timer to trigger frame-grab");
 
@@ -301,6 +301,9 @@ namespace VideoFrameAnalyzer
 
                     // Raise the new frame event
                     LogMessage("Producer: new frame provided, should analyze? Frame num: {0}", meta.Index);
+
+                    //SendOrPostCallback x = (o) => OnNewFrameProvided((VideoFrame)o); 
+                    //syncCtx.Post(x, vframe);
                     OnNewFrameProvided(vframe);
 
                     if (_analysisPredicate(vframe))
@@ -310,10 +313,13 @@ namespace VideoFrameAnalyzer
                         // Call the analysis function on a threadpool thread
                         var analysisTask = DoAnalyzeFrame(vframe);
 
-                        LogMessage("Producer: adding analysis task to queue {0}", analysisTask.Id);
+                        //if (!analysisTask.IsCompleted)
+                        {
+                            LogMessage("Producer: adding analysis task to queue {0}", analysisTask.Id);
 
-                        // Push the frame onto the queue
-                        _analysisTaskQueue.Add(analysisTask);
+                            // Push the frame onto the queue
+                            _analysisTaskQueue.Add(analysisTask);
+                        }
                     }
                     else
                     {
@@ -367,10 +373,14 @@ namespace VideoFrameAnalyzer
                     {
                         // Block until the result becomes available.
                         LogMessage("Consumer: waiting for next result to arrive for task {0}", nextTask.Id);
-                        var result = await nextTask;
+                        var result = await nextTask.ConfigureAwait(false);
 
                         // Raise the new result event.
                         LogMessage("Consumer: got result for frame {0}. {1} tasks in queue", result.Frame.Metadata.Index, _analysisTaskQueue.Count);
+                        
+                        //SendOrPostCallback x = (o) => OnNewResultAvailable((NewResultEventArgs)o);
+                        //syncCtx.Post(x, result);
+
                         OnNewResultAvailable(result);
                     }
                 }

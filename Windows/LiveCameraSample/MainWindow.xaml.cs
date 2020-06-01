@@ -83,7 +83,8 @@ namespace LiveCameraSample
             Emotions,
             EmotionsWithClientFaceDetect,
             Tags,
-            Celebrities
+            Celebrities,
+            NoAnalysis
         }
 
         public MainWindow()
@@ -455,27 +456,27 @@ namespace LiveCameraSample
             return Task.FromResult(result);
         }
 
-        private Yolo2DnnDetector _dnnDetector = new Yolo2DnnDetector();
+        private Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
 
         private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {
+            var image = frame.Image;
+            if (image == null || image.Width <= 0 || image.Height <= 0)
+            {
+                return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
+            }
+
             Func<LiveCameraResult> detector = () =>
             {
                 LiveCameraResult result;
 
                 try
                 {
-                    var image = frame.Image;
-                    if (image == null)
-                    {
-                        return new LiveCameraResult { Faces = new DetectedFace[0] };
-                    }
-
                     var watch = new Stopwatch();
                     watch.Start();
 
                     var detectorResult = _dnnDetector.ClassifyObjects(image, Rect.Empty);
-                    result = ToLiveCameraResult(detectorResult);
+                    result = ToLiveCameraResult(detectorResult, image.Width, image.Height);
 
                     watch.Stop();
                     ConcurrentLogger.WriteLine($"Classifiy-objects ms:{watch.ElapsedMilliseconds}");
@@ -495,7 +496,7 @@ namespace LiveCameraSample
             return Task.Run(() => detector());
         }
 
-        LiveCameraResult ToLiveCameraResult(DnnDetectedObject[] detectedObjects)
+        LiveCameraResult ToLiveCameraResult(DnnDetectedObject[] detectedObjects, int width, int height)
         {
             LiveCameraResult result = new LiveCameraResult();
             List<DetectedFace> faces = new List<DetectedFace>();
@@ -504,6 +505,10 @@ namespace LiveCameraSample
             foreach (var dObj in detectedObjects)
             {
                 var box = dObj.BoundingBox;
+
+                box.Width = Math.Min(box.X + box.Width, width);
+                box.Height = Math.Min(box.Y + box.Height, height);
+
                 var face = new DetectedFace()
                 {
                     FaceAttributes = new FaceAttributes() { Smile = dObj.Probability },
@@ -518,57 +523,6 @@ namespace LiveCameraSample
             result.Tags = tags.ToArray();
             return result;
         }
-
-        //private LiveCameraResult ExtractYolo2Results(Mat output, Mat image, float threshold, float nmsThreshold, float scaleFactor, bool nms = true)
-        //{
-        //    //    YOLO's output format was like this :
-        //    // 0,1 : Center of x, y
-        //    //2,3 : Width, Height
-        //    //4 : Confidence
-        //    //rest : Individual class probability
-        //    var prob = output;
-        //    var w = image.Width;
-        //    var h = image.Height;
-        //    var org = image;
-
-        //    const int prefix = 5;   //skip 0~4
-
-        //    for (int i = 0; i < prob.Rows; i++)
-        //    {
-        //        var confidence = prob.At<int>(i, 4);
-        //        if (confidence > threshold)
-        //        {
-        //            //get classes probability
-        //            Cv2.MinMaxLoc(prob.Row(i).ColRange(prefix, prob.Cols), out _, out OpenCvSharp.Point max);
-        //            var classes = max.X;
-        //            var probability = prob.At<float>(i, classes + prefix);
-
-        //            if (probability > threshold) //more accuracy
-        //            {
-        //                //get center and width/height
-        //                var centerX = prob.At<float>(i, 0) * w;
-        //                var centerY = prob.At<float>(i, 1) * h;
-        //                var width = prob.At<float>(i, 2) * w;
-        //                var height = prob.At<float>(i, 3) * h;
-        //                //label formating
-        //                var label = $"{Labels[classes]} {probability * 100:0.00}%";
-        //                //                Console.WriteLine($"confidence {confidence * 100:0.00}% {label}");
-        //                var x1 = (centerX - width / 2) < 0 ? 0 : centerX - width / 2; //avoid left side over edge
-        //                                                                              //draw result
-
-
-        //                org.Rectangle(new Point(x1, centerY - height / 2), new Point(centerX + width / 2, centerY + height / 2), Colors[classes], 2);
-            
-        //                var textSize = Cv2.GetTextSize(label, HersheyFonts.HersheyTriplex, 0.5, 1, out var baseline);
-        //                Cv2.Rectangle(org, new Rect(new Point(x1, centerY - height / 2 - textSize.Height - baseline),
-        //             new Size(textSize.Width, textSize.Height + baseline)), Colors[classes], Cv2.FILLED);
-        //                Cv2.PutText(org, label, new Point(x1, centerY - height / 2 - baseline), HersheyFonts.HersheyTriplex, 0.5, Scalar.Black);
-        //            }
-        //        }
-        //    }
-        //    return null;
-        //}
-
 
         /// <summary> Function which submits a frame to the Emotion API. </summary>
         /// <param name="frame"> The video frame to submit. </param>
@@ -650,28 +604,41 @@ namespace LiveCameraSample
 
         private BitmapSource VisualizeResult(VideoFrame frame)
         {
-            // Draw any results on top of the image. 
-            BitmapSource visImage = frame.Image.ToBitmapSource();
-
-            var result = _latestResultsToDisplay;
-
-            if (result != null)
+            try
             {
-                // See if we have local face detections for this image.
-                var clientFaces = (OpenCvSharp.Rect[])frame.UserData;
-                if (clientFaces != null && result.Faces != null)
+                var image = frame.Image;
+
+                if (image.Width > 0 && image.Height > 0)
                 {
-                    // If so, then the analysis results might be from an older frame. We need to match
-                    // the client-side face detections (computed on this frame) with the analysis
-                    // results (computed on the older frame) that we want to display. 
-                    MatchAndReplaceFaceRectangles(result.Faces, clientFaces);
+                    // Draw any results on top of the image. 
+                    BitmapSource visImage = frame.Image.ToBitmapSource();
+
+                    var result = _latestResultsToDisplay;
+
+                    if (result != null)
+                    {
+                        // See if we have local face detections for this image.
+                        var clientFaces = (OpenCvSharp.Rect[])frame.UserData;
+                        if (clientFaces != null && result.Faces != null)
+                        {
+                            // If so, then the analysis results might be from an older frame. We need to match
+                            // the client-side face detections (computed on this frame) with the analysis
+                            // results (computed on the older frame) that we want to display. 
+                            MatchAndReplaceFaceRectangles(result.Faces, clientFaces);
+                        }
+
+                        visImage = Visualization.DrawFaces(visImage, result.Faces, result.CelebrityNames);
+                        visImage = Visualization.DrawTags(visImage, result.Tags);
+                    }
+                    return visImage;
                 }
-
-                visImage = Visualization.DrawFaces(visImage, result.Faces, result.CelebrityNames);
-                visImage = Visualization.DrawTags(visImage, result.Tags);
             }
-
-            return visImage;
+            catch (Exception ex)
+            {
+                ConcurrentLogger.WriteLine("Exception at Visualize:" + ex.Message);
+                int a = 1;
+            }
+            return null;
         }
 
         /// <summary> Populate CameraList in the UI, once it is loaded. </summary>
@@ -780,14 +747,17 @@ namespace LiveCameraSample
             //await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
 
             //await _grabber.StartProcessingFileAsync(
-            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 30, false, RotateFlags.Rotate90Clockwise);
-
-            await _grabber.StartProcessingFileAsync(
-                  @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, false, null);
+            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 
+            //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
 
             //await _grabber.StartProcessingFileAsync(
-            //    @"rtsp://admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub", 30, RotateFlags.Rotate90Clockwise);
+            //      @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, false, null);
 
+            await _grabber.StartProcessingFileAsync(
+                @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
+                rotateFlags: RotateFlags.Rotate90Clockwise
+                ,overrideFPS: 15
+            );
             //           await _grabber.StartProcessingFileAsync(
             //               @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/101", 10);
         }
