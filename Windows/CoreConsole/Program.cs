@@ -51,10 +51,10 @@ namespace BasicConsoleSample
             var grabber = new FrameGrabber<DnnDetectedObject[]>();
 
             // Set up a listener for when we acquire a new frame.
-            grabber.NewFrameProvided += (s, e) =>
-            {
-//                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
-            };
+//            grabber.NewFrameProvided += (s, e) =>
+//            {
+////                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
+//            };
 
             // Set up Face API call.
             grabber.AnalysisFunction = OpenCVDNNYoloPeopleDetect;
@@ -73,6 +73,14 @@ namespace BasicConsoleSample
                     {
                         Console.WriteLine($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
                     }
+                    
+                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label != "car" && o.Label != "truck"))
+                    {
+                        var result = Visualizer.AnnotateImage(e.Frame.Image, e.Analysis);
+                        var filename = $"obj-{e.Frame.Metadata.Index}.jpg";
+                        Cv2.ImWrite(filename, result);
+                        Console.WriteLine($"Interesting Detection Saved: {filename}");
+                    }
                 }
             };
 
@@ -82,6 +90,11 @@ namespace BasicConsoleSample
 
             // Start running in the background.
             //grabber.StartProcessingCameraAsync().Wait();
+
+            //grabber.StartProcessingFileAsync(
+            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
+            //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise).Wait();
+
 
             grabber.StartProcessingFileAsync(
                 @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",

@@ -134,7 +134,9 @@ namespace VideoFrameAnalyzer
 
                 var detection = new DnnDetectedObject()
                 {
+                    Index = classIds[i],
                     Label = Labels[classIds[i]],
+                    Color = Colors[classIds[i]],
                     Probability = probabilities[i],
                     BoundingBox = box
                 };

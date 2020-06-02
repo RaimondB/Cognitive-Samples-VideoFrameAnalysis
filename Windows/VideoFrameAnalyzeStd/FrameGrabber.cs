@@ -204,7 +204,7 @@ namespace VideoFrameAnalyzer
 
             await StopProcessingAsync();//.ConfigureAwait(false);
 
-            _reader = new VideoCapture(fileName, VideoCaptureAPIs.FFMPEG);
+            _reader = new VideoCapture(fileName);//, VideoCaptureAPIs.FFMPEG);
             _readerIsContinuous = isContinuousStream;
             //VideoCapture.FromFile(fileName);//, VideoCaptureAPIs.OPENCV_MJPEG);
             //_reader.Open(fileName);
@@ -248,7 +248,7 @@ namespace VideoFrameAnalyzer
             _producerTask = Task.Run(() =>
             {
                 var frameCount = 0;
-                while (!_stopping && _reader.IsOpened())
+                while (!_stopping)
                 {
                     LogMessage("Producer: waiting for timer to trigger frame-grab");
 

@@ -31,10 +31,14 @@ namespace VideoFrameAnalyzer
         private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
 
         //random assign color to each label
-        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
+        //private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
 
         //get labels from coco.names
-        private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
+        //private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
+
+        private static readonly string[] Labels = { "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor" };
+        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 20).Select(x => Scalar.RandomColor()).ToArray();
+
 
         private OpenCvSharp.Dnn.Net nnet;
 
@@ -131,7 +135,9 @@ namespace VideoFrameAnalyzer
 
                 var detection = new DnnDetectedObject()
                 {
+                    Index = classIds[i],
                     Label = Labels[classIds[i]],
+                    Color = Colors[classIds[i]],
                     Probability = probabilities[i],
                     BoundingBox = box
                 };
