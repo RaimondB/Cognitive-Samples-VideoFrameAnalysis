@@ -50,9 +50,9 @@ namespace VideoFrameAnalyzer
     }
 
     /// <summary> A frame grabber. </summary>
-    /// <typeparam name="AnalysisResultType"> Type of the analysis result. This is the type that
+    /// <typeparam name="TAnalysisResultType"> Type of the analysis result. This is the type that
     ///     the AnalysisFunction will return, when it calls some API on a video frame. </typeparam>
-    public class FrameGrabber<AnalysisResultType> : IDisposable
+    public class FrameGrabber<TAnalysisResultType> : IDisposable
     {
         #region Types
 
@@ -77,7 +77,7 @@ namespace VideoFrameAnalyzer
                 Frame = frame;
             }
             public VideoFrame Frame { get; }
-            public AnalysisResultType Analysis { get; set; } = default(AnalysisResultType);
+            public TAnalysisResultType Analysis { get; set; } = default(TAnalysisResultType);
             public bool TimedOut { get; set; } = false;
             public Exception Exception { get; set; } = null;
         }
@@ -96,7 +96,7 @@ namespace VideoFrameAnalyzer
         ///     var grabber = new FrameGrabber();
         ///     grabber.AnalysisFunction = async (frame) =&gt; { return await client.RecognizeAsync(frame.Image.ToMemoryStream(".jpg")); };
         ///     </code></example>
-        public Func<VideoFrame, Task<AnalysisResultType>> AnalysisFunction { get; set; } = null;
+        public Func<VideoFrame, Task<TAnalysisResultType>> AnalysisFunction { get; set; } = null;
 
         /// <summary> Gets or sets the analysis timeout. When executing the
         ///     <see cref="AnalysisFunction"/> on a video frame, if the call doesn't return a
@@ -230,6 +230,8 @@ namespace VideoFrameAnalyzer
             StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now, rotateFlags);
         }
 
+
+
         /// <summary> Starts capturing and processing video frames. </summary>
         /// <param name="frameGrabDelay"> The frame grab delay. </param>
         /// <param name="timestampFn">    Function to generate the timestamp for each frame. This
@@ -245,7 +247,7 @@ namespace VideoFrameAnalyzer
             var timerIterations = 0;
 
             // Create a background thread that will grab frames in a loop.
-            _producerTask = Task.Run(() =>
+            _producerTask = Task.Run(async () =>
             {
                 var frameCount = 0;
                 while (!_stopping)
@@ -253,7 +255,8 @@ namespace VideoFrameAnalyzer
                     LogMessage("Producer: waiting for timer to trigger frame-grab");
 
                     // Wait to get released by the timer.
-                    _frameGrabTimer.WaitOne();
+                    //_frameGrabTimer.WaitOne();
+                    await Task.Delay(25);
                     LogMessage("Producer: grabbing frame...");
 
                     var startTime = DateTime.Now;
@@ -373,7 +376,7 @@ namespace VideoFrameAnalyzer
                     {
                         // Block until the result becomes available.
                         LogMessage("Consumer: waiting for next result to arrive for task {0}", nextTask.Id);
-                        var result = await nextTask.ConfigureAwait(false);
+                        var result = await nextTask;
 
                         // Raise the new result event.
                         LogMessage("Consumer: got result for frame {0}. {1} tasks in queue", result.Frame.Metadata.Index, _analysisTaskQueue.Count);
@@ -391,7 +394,9 @@ namespace VideoFrameAnalyzer
             // Set up a timer object that will trigger the frame-grab at a regular interval.
             _timer = new Timer(async s /* state */ =>
             {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task: Sync needed for console
                 await _timerMutex.WaitAsync();
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
                 try
                 {
                     // If the handle was not reset by the producer, then the frame-grab was missed.
@@ -415,8 +420,10 @@ namespace VideoFrameAnalyzer
             OnProcessingStarted();
         }
 
+
         /// <summary> Stops capturing and processing video frames. </summary>
         /// <returns> A Task. </returns>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "Sync needed because of eventhandlers")]
         public async Task StopProcessingAsync()
         {
             OnProcessingStopping();
@@ -563,42 +570,43 @@ namespace VideoFrameAnalyzer
         /// <returns> A Task&lt;NewResultEventArgs&gt; </returns>
         protected async Task<NewResultEventArgs> DoAnalyzeFrame(VideoFrame frame)
         {
-            CancellationTokenSource source = new CancellationTokenSource();
-
-            // Make a local reference to the function, just in case someone sets
-            // AnalysisFunction = null before we can call it.
-            var fcn = AnalysisFunction;
-            if (fcn != null)
+            using (CancellationTokenSource source = new CancellationTokenSource())
             {
-                NewResultEventArgs output = new NewResultEventArgs(frame);
-                var task = fcn(frame);
-                LogMessage("DoAnalysis: started task {0}", task.Id);
-                try
+                // Make a local reference to the function, just in case someone sets
+                // AnalysisFunction = null before we can call it.
+                var fcn = AnalysisFunction;
+                if (fcn != null)
                 {
-                    if (task == await Task.WhenAny(task, Task.Delay(AnalysisTimeout, source.Token)))
+                    NewResultEventArgs output = new NewResultEventArgs(frame);
+                    var task = fcn(frame);
+                    LogMessage("DoAnalysis: started task {0}", task.Id);
+                    try
                     {
-                        output.Analysis = await task;
-                        source.Cancel();
+                        if (task == await Task.WhenAny(task, Task.Delay(AnalysisTimeout, source.Token)))
+                        {
+                            output.Analysis = await task;
+                            source.Cancel();
+                        }
+                        else
+                        {
+                            LogMessage("DoAnalysis: Timeout from task {0}", task.Id);
+                            output.TimedOut = true;
+                        }
                     }
-                    else
+                    catch (Exception ae)
                     {
-                        LogMessage("DoAnalysis: Timeout from task {0}", task.Id);
-                        output.TimedOut = true;
+                        output.Exception = ae;
+                        LogMessage("DoAnalysis: Exception from task {0}:{1}", task.Id, ae.Message);
                     }
+
+                    LogMessage("DoAnalysis: returned from task {0}", task.Id);
+
+                    return output;
                 }
-                catch (Exception ae)
+                else
                 {
-                    output.Exception = ae;
-                    LogMessage("DoAnalysis: Exception from task {0}:{1}", task.Id, ae.Message);
+                    return null;
                 }
-
-                LogMessage("DoAnalysis: returned from task {0}", task.Id);
-
-                return output;
-            }
-            else
-            {
-                return null;
             }
         }
 
@@ -608,10 +616,11 @@ namespace VideoFrameAnalyzer
             {
                 if (disposing)
                 {
-                    _frameGrabTimer.Dispose();
+                    _frameGrabTimer?.Dispose();
                     _timer?.Dispose();
-                    _timerMutex.Dispose();
+                    _timerMutex?.Dispose();
                     _analysisTaskQueue?.Dispose();
+                    _reader?.Dispose();
                 }
 
                 disposedValue = true;
@@ -621,6 +630,7 @@ namespace VideoFrameAnalyzer
         public void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         #endregion Methods

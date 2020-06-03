@@ -54,7 +54,9 @@ namespace VideoFrameAnalyzer
             Task.Run(async () =>
             {
                 // Wait to get access to the queue. 
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task: Sync needed because of console writeline
                 await s_printMutex.WaitAsync();
+#pragma warning restore CA2007 // 
                 try
                 {
                     string msg = s_messageQueue.Take();

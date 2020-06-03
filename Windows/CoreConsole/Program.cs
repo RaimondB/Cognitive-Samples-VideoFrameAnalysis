@@ -74,10 +74,12 @@ namespace BasicConsoleSample
                         Console.WriteLine($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
                     }
                     
-                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label != "car" && o.Label != "truck"))
+                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label != "car" && 
+                                                                o.Label != "truck" &&
+                                                                o.Label != "clock"))
                     {
                         var result = Visualizer.AnnotateImage(e.Frame.Image, e.Analysis);
-                        var filename = $"obj-{e.Frame.Metadata.Index}.jpg";
+                        var filename = $".\\captures\\obj-{GetTimestampedSortable(e.Frame.Metadata)}.jpg";
                         Cv2.ImWrite(filename, result);
                         Console.WriteLine($"Interesting Detection Saved: {filename}");
                     }
@@ -91,16 +93,20 @@ namespace BasicConsoleSample
             // Start running in the background.
             //grabber.StartProcessingCameraAsync().Wait();
 
-            //grabber.StartProcessingFileAsync(
-            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
-            //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise).Wait();
-
-
             grabber.StartProcessingFileAsync(
-                @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
-                rotateFlags: RotateFlags.Rotate90Clockwise
-                , overrideFPS: 15
-            ).Wait();
+                @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
+                isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise).Wait();
+
+
+            //grabber.StartProcessingFileAsync(
+            //    @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
+            //    rotateFlags: RotateFlags.Rotate90Clockwise
+            //    , overrideFPS: 15
+            //).Wait();
+
+            //grabber.StartProcessingFileAsync(
+            //    @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102",
+            //    overrideFPS: 30).Wait();
 
 
 
@@ -110,6 +116,12 @@ namespace BasicConsoleSample
 
             // Stop, blocking until done.
             grabber.StopProcessingAsync().Wait();
+            grabber.Dispose();
+        }
+
+        private static string GetTimestampedSortable(VideoFrameMetadata metaData)
+        {
+            return $"{metaData.Timestamp:yyyyMMddTHHmmss}-{metaData.Index:00000}";
         }
 
         private static Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
@@ -119,7 +131,7 @@ namespace BasicConsoleSample
             var image = frame.Image;
             if (image == null || image.Width <= 0 || image.Height <= 0)
             {
-                return Task.FromResult(new DnnDetectedObject[0]);
+                return Task.FromResult(Array.Empty<DnnDetectedObject>());
             }
 
             Func<DnnDetectedObject[]> detector = () =>
@@ -138,7 +150,7 @@ namespace BasicConsoleSample
                 }
                 catch (Exception ex)
                 {
-                    result = new DnnDetectedObject[0];
+                    result = Array.Empty<DnnDetectedObject>();
                     ConcurrentLogger.WriteLine($"Exception in analysis:{ex.Message}");
                 }
 

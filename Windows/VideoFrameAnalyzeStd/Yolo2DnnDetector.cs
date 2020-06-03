@@ -27,16 +27,13 @@ namespace VideoFrameAnalyzer
         //https://pjreddie.com/media/files/yolov3.weights
         private const string Weight = @"C:\Users\Raimo\Downloads\yolov2.weights";
 
-        //https://github.com/pjreddie/darknet/blob/master/data/coco.names
-        private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
-
+        private static readonly string[] Labels = { "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor" };
         //random assign color to each label
         //private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
 
         //get labels from coco.names
         //private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
 
-        private static readonly string[] Labels = { "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor" };
         private static readonly Scalar[] Colors = Enumerable.Repeat(false, 20).Select(x => Scalar.RandomColor()).ToArray();
 
 
@@ -52,6 +49,8 @@ namespace VideoFrameAnalyzer
 
         public DnnDetectedObject[] ClassifyObjects(Mat image, Rect boxToAnalyze)
         {
+            if (image == null) throw new ArgumentNullException(nameof(image));
+
             var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), new Scalar(), crop: false);
             nnet.SetInput(blob);
 
@@ -119,7 +118,7 @@ namespace VideoFrameAnalyzer
             if (!nms)
             {
                 //using non-maximum suppression to reduce overlapping low confidence box
-                indices = Enumerable.Range(0, boxes.Count()).ToArray();
+                indices = Enumerable.Range(0, boxes.Count).ToArray();
             }
             else
             {

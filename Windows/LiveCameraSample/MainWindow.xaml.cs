@@ -456,7 +456,7 @@ namespace LiveCameraSample
             return Task.FromResult(result);
         }
 
-        private Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
+        private Yolo4DnnDetector _dnnDetector = new Yolo4DnnDetector();
 
         private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {
@@ -484,7 +484,7 @@ namespace LiveCameraSample
                 catch (Exception ex)
                 {
                     result = new LiveCameraResult();
-                    ConcurrentLogger.WriteLine($"Exception in analysis:{ex.Message}");
+                    ConcurrentLogger.WriteLine($"Exception in analysis:{ex.Message}:{ex.StackTrace}");
                 }
 
                 return result;
@@ -746,20 +746,20 @@ namespace LiveCameraSample
 
             //await _grabber.StartProcessingCameraAsync(CameraList.SelectedIndex);
 
-            //await _grabber.StartProcessingFileAsync(
-            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4", 
-            //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
+            await _grabber.StartProcessingFileAsync(
+                @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
+                isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
 
             //await _grabber.StartProcessingFileAsync(
             //      @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4", 15, false, null);
 
-            await _grabber.StartProcessingFileAsync(
-                @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
-                rotateFlags: RotateFlags.Rotate90Clockwise
-                ,overrideFPS: 15
-            );
-            //           await _grabber.StartProcessingFileAsync(
-            //               @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/101", 10);
+            //await _grabber.StartProcessingFileAsync(
+            //    @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
+            //    rotateFlags: RotateFlags.Rotate90Clockwise
+            //    ,overrideFPS: 15
+            //);
+            //await _grabber.StartProcessingFileAsync(
+            //    @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102", 10);
         }
 
         private async void StopButton_Click(object sender, RoutedEventArgs e)

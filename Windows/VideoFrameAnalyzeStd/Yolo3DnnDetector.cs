@@ -48,7 +48,12 @@ namespace VideoFrameAnalyzer
 
         public DnnDetectedObject[] ClassifyObjects(Mat image, Rect boxToAnalyze)
         {
-            var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), new Scalar(), crop: false);
+            if (image == null || image.Width <= 0 || image.Height <= 0)
+            {
+                throw new InvalidOperationException($"{nameof(image)} is invalid");
+            }
+
+            var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), crop: false);
             nnet.SetInput(blob);
 
             //create mats for output layer
@@ -85,7 +90,9 @@ namespace VideoFrameAnalyzer
                 for (var i = 0; i < prob.Rows; i++)
                 {
                     var confidence = prob.At<float>(i, 4);
-                    if (confidence > threshold)
+
+                    //Filter out bogus results of > 100% confidence
+                    if (confidence > threshold && confidence <= 1.0)
                     {
                         //get classes probability
                         Cv2.MinMaxLoc(prob.Row(i).ColRange(prefix, prob.Cols), out _, out OpenCvSharp.Point max);
@@ -118,7 +125,7 @@ namespace VideoFrameAnalyzer
             if (!nms)
             {
                 //using non-maximum suppression to reduce overlapping low confidence box
-                indices = Enumerable.Range(0, boxes.Count()).ToArray();
+                indices = Enumerable.Range(0, boxes.Count).ToArray();
             }
             else
             {
