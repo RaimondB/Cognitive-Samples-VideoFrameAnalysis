@@ -456,7 +456,7 @@ namespace LiveCameraSample
             return Task.FromResult(result);
         }
 
-        private Yolo4DnnDetector _dnnDetector = new Yolo4DnnDetector();
+        private Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
 
         private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {
@@ -476,9 +476,11 @@ namespace LiveCameraSample
                     watch.Start();
 
                     var detectorResult = _dnnDetector.ClassifyObjects(image, Rect.Empty);
-                    result = ToLiveCameraResult(detectorResult, image.Width, image.Height);
-
                     watch.Stop();
+
+                    result = ToLiveCameraResult(detectorResult, image.Width, image.Height);
+                    result.TempImage1 = Visualizer.AnnotateImage(image, detectorResult);
+
                     ConcurrentLogger.WriteLine($"Classifiy-objects ms:{watch.ElapsedMilliseconds}");
                 }
                 catch (Exception ex)

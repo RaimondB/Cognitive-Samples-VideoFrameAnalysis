@@ -44,11 +44,11 @@ namespace BasicConsoleSample
 {
     internal class Program
     {
-        private static void Main(string[] args)
+        private static async Task Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             // Create grabber. 
-            var grabber = new FrameGrabber<DnnDetectedObject[]>();
+            var grabber = new MultiFrameGrabber<DnnDetectedObject[]>();
 
             // Set up a listener for when we acquire a new frame.
 //            grabber.NewFrameProvided += (s, e) =>
@@ -93,16 +93,16 @@ namespace BasicConsoleSample
             // Start running in the background.
             //grabber.StartProcessingCameraAsync().Wait();
 
-            grabber.StartProcessingFileAsync(
+            await grabber.StartProcessingFileAsync(
                 @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
-                isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise).Wait();
+                isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
 
 
-            //grabber.StartProcessingFileAsync(
+            //await grabber.StartProcessingFileAsync(
             //    @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
             //    rotateFlags: RotateFlags.Rotate90Clockwise
             //    , overrideFPS: 15
-            //).Wait();
+            //);
 
             //grabber.StartProcessingFileAsync(
             //    @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102",
@@ -115,7 +115,7 @@ namespace BasicConsoleSample
             Console.ReadKey();
 
             // Stop, blocking until done.
-            grabber.StopProcessingAsync().Wait();
+            await grabber.StopProcessingAsync();
             grabber.Dispose();
         }
 
@@ -124,7 +124,7 @@ namespace BasicConsoleSample
             return $"{metaData.Timestamp:yyyyMMddTHHmmss}-{metaData.Index:00000}";
         }
 
-        private static Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
+        private static Yolo2DnnDetector _dnnDetector = new Yolo2DnnDetector();
 
         private static Task<DnnDetectedObject[]> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {
