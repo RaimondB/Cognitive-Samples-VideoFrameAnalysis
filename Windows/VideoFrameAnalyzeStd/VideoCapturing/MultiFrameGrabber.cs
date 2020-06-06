@@ -198,18 +198,17 @@ namespace VideoFrameAnalyzer
                     SingleWriter = true
                 });
 
-        private static Channel<VideoFrame> CreateMergeChannel(int inputs) =>
-    Channel.CreateBounded<VideoFrame>(
-        new BoundedChannelOptions(inputs)
+        private static Channel<IList<VideoFrame>> CreateMergeChannel() =>
+    Channel.CreateBounded<IList<VideoFrame>>(
+        new BoundedChannelOptions(2)
         {
             AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.DropOldest,
+            FullMode = BoundedChannelFullMode.DropNewest,
             SingleReader = true,
             SingleWriter = true
         });
 
         private List<Channel<VideoFrame>> _capturingChannels = new List<Channel<VideoFrame>>();
-        private List<Task> _producerTasks = new List<Task>();
 
 
         public Task StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
@@ -227,7 +226,7 @@ namespace VideoFrameAnalyzer
         }
 
         public Task MergeChannels<T>(
-            List<Channel<T>> inputChannels, Channel<T> outputChannel, TimeSpan mergeDelay)
+            IList<Channel<T>> inputChannels, Channel<IList<T>> outputChannel, TimeSpan mergeDelay)
         {
             var timeout = TimeSpan.FromMilliseconds(50);
 //            using var cts = new CancellationTokenSource();
@@ -236,17 +235,18 @@ namespace VideoFrameAnalyzer
 
             return Task.Run(async () =>
             {
-                var readers = inputChannels.Select(c => c.Reader);
+                var readers = inputChannels.Select(c => c.Reader).ToArray();
                 var writer = outputChannel.Writer;
 
                 while(!_stopping)
                 {
-                    foreach(var reader in readers )
+                    List<T> results = new List<T>();
+                    for(var index = 0; index < readers.Length; index++ )
                     {
                         try
                         {
-                            var result = await reader.ReadAsync().ConfigureAwait(false);
-                            await writer.WriteAsync(result).ConfigureAwait(false);
+                            var result = await readers[index].ReadAsync().ConfigureAwait(false);
+                            results.Add(result);
                         }
                         catch(Exception ex)
                         {
@@ -254,6 +254,8 @@ namespace VideoFrameAnalyzer
                             //Just continue to next on errors or timeouts
                         }
                     }
+                    await writer.WriteAsync(results).ConfigureAwait(false);
+
                     await Task.Delay(mergeDelay).ConfigureAwait(false);
                 }
             });
@@ -265,7 +267,7 @@ namespace VideoFrameAnalyzer
         ///     function will get called once per frame. </param>
         public void StartProcessingAll()
         {
-            var analysisChannel = CreateMergeChannel(_capturingChannels.Count);
+            var analysisChannel = CreateMergeChannel();
             _mergeTask = MergeChannels(_capturingChannels, analysisChannel, _analysisInterval);
 
             _consumerTask = Task.Run(async () =>
@@ -276,17 +278,20 @@ namespace VideoFrameAnalyzer
                 {
                     LogMessage("Consumer: waiting for next result to arrive");
 
-                    var vframe = await reader.ReadAsync();
-
-                    var startTime = DateTime.Now;
+                    var vframes = await reader.ReadAsync();
 
                     try
                     {
-                        var result = await DoAnalyzeFrame(vframe);
+                        foreach (var vframe in vframes)
+                        {
+                            var startTime = DateTime.Now;
 
-                        LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).Milliseconds);
+                            var result = await DoAnalyzeFrame(vframe);
 
-                        OnNewResultAvailable(result);
+                            LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).Milliseconds);
+
+                            OnNewResultAvailable(result);
+                        }
                     }
                     catch(Exception ex)
                     {
