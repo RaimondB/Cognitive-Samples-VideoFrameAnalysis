@@ -65,7 +65,15 @@ namespace VideoFrameAnalyzer
             const float threshold = 0.5f;       //for confidence 
             const float nmsThreshold = 0.3f;    //threshold for nms
 
-            return ExtractYolo2Results(outs, image, threshold, nmsThreshold, 1.0f);
+            var detections = ExtractYolo2Results(outs, image, threshold, nmsThreshold, 1.0f);
+            blob.Dispose();
+
+            foreach(var output in outs)
+            {
+                output.Dispose();
+            }
+
+            return detections;
         }
 
         private DnnDetectedObject[] ExtractYolo2Results(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, float scaleFactor, bool nms = true)

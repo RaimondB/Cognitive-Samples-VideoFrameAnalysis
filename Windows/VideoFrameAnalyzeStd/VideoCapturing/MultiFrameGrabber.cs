@@ -1,5 +1,5 @@
 // Uncomment this to enable the LogMessage function, which can with debugging timing issues.
-//#define TRACE_GRABBER
+#define TRACE_GRABBER
 
 using System;
 using System.Collections.Concurrent;
@@ -71,20 +71,20 @@ namespace VideoFrameAnalyzer
         /// <value> The analysis timeout. </value>
         public TimeSpan AnalysisTimeout { get; set; } = TimeSpan.FromMilliseconds(5000);
 
-        public bool IsRunning { get { return _analysisTaskQueue != null; } }
+        public bool IsRunning { get { return _mergeTask != null; } }
 
-        public double FrameRate
-        {
-            get { return _fps; }
-            set
-            {
-                _fps = value;
-                if (_timer != null)
-                {
-                    _timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(1.0 / _fps));
-                }
-            }
-        }
+        //public double FrameRate
+        //{
+        //    get { return _fps; }
+        //    set
+        //    {
+        //        _fps = value;
+        //        if (_timer != null)
+        //        {
+        //            _timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(1.0 / _fps));
+        //        }
+        //    }
+        //}
 
         public int Width { get; protected set; }
         public int Height { get; protected set; }
@@ -94,20 +94,13 @@ namespace VideoFrameAnalyzer
         #region Fields
 
         protected Predicate<VideoFrame> _analysisPredicate = null;
-        protected List<VideoStream> _streams = null;
-        protected bool _readerIsContinuous = false;
+        protected List<VideoStream> _streams = new List<VideoStream>();
 
-        protected Timer _timer = null;
-        protected SemaphoreSlim _timerMutex = new SemaphoreSlim(1);
-        protected AutoResetEvent _frameGrabTimer = new AutoResetEvent(false);
         protected bool _stopping = false;
         protected Task _producerTask = null;
         protected Task _consumerTask = null;
-        protected BlockingCollection<Task<NewResultEventArgs>> _analysisTaskQueue = null;
-        protected bool _resetTrigger = true;
-        protected int _numCameras = -1;
-        protected int _currCameraIdx = -1;
-        protected double _fps = 0;
+        protected Task _mergeTask = null;
+
         private bool disposedValue = false;
 
         #endregion Fields
@@ -127,6 +120,26 @@ namespace VideoFrameAnalyzer
             ConcurrentLogger.WriteLine(String.Format(format, args));
         }
 
+        protected async Task<(bool,TResult)> DoWithTimeout<TResult>(Func<Task<TResult>> func, TimeSpan timeout)
+        {
+            using (CancellationTokenSource source = new CancellationTokenSource())
+            {
+                source.CancelAfter(timeout);
+
+                try 
+                {
+                    var result = await Task.Run(func, source.Token);
+                    return (true, result);
+                }
+                catch(OperationCanceledException ex)
+                {
+                    LogMessage($"Exception in dowithtimeout:{ex.Message}");
+                    return (false, default(TResult));
+                }
+            }
+        }
+
+
         protected async Task<NewResultEventArgs> DoAnalyzeFrame(VideoFrame frame)
         {
             using (CancellationTokenSource source = new CancellationTokenSource())
@@ -143,7 +156,7 @@ namespace VideoFrameAnalyzer
                     {
                         if (task == await Task.WhenAny(task, Task.Delay(AnalysisTimeout, source.Token)))
                         {
-                            output.Analysis = await task;
+                            output.Analysis = await task.ConfigureAwait(false);
                             source.Cancel();
                         }
                         else
@@ -175,35 +188,89 @@ namespace VideoFrameAnalyzer
             _analysisInterval = interval;
         }
 
-        private readonly Channel<VideoFrame> _capturingChannel =
+        private static Channel<VideoFrame> CreateCapturingChannel() =>
             Channel.CreateBounded<VideoFrame>(
-                new BoundedChannelOptions(1)
+                new BoundedChannelOptions(2)
                 {
                     AllowSynchronousContinuations = true,
-                    FullMode = BoundedChannelFullMode.DropOldest,
+                    FullMode = BoundedChannelFullMode.DropNewest,
                     SingleReader = true,
-                    SingleWriter = false
+                    SingleWriter = true
                 });
 
-        public async Task StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
+        private static Channel<VideoFrame> CreateMergeChannel(int inputs) =>
+    Channel.CreateBounded<VideoFrame>(
+        new BoundedChannelOptions(inputs)
+        {
+            AllowSynchronousContinuations = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = true
+        });
+
+        private List<Channel<VideoFrame>> _capturingChannels = new List<Channel<VideoFrame>>();
+        private List<Task> _producerTasks = new List<Task>();
+
+
+        public Task StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
         {
             VideoStream vs = new VideoStream("first", fileName, overrideFPS, isContinuousStream, rotateFlags);
 
-            //_streams.Add(vs);
-            StartProcessing(vs);
+            _streams.Add(vs);
+            
+            var newChannel = CreateCapturingChannel();
+            _capturingChannels.Add(newChannel);
+            
+            vs.StartProcessingAsync(newChannel, TimeSpan.FromSeconds(3));
+
+            return Task.CompletedTask;
+        }
+
+        public Task MergeChannels<T>(
+            List<Channel<T>> inputChannels, Channel<T> outputChannel, TimeSpan mergeDelay)
+        {
+            var timeout = TimeSpan.FromMilliseconds(50);
+//            using var cts = new CancellationTokenSource();
+//            using var timeoutCts = new CancellationTokenSource();
+            //timeoutCts.CancelAfter(150);
+
+            return Task.Run(async () =>
+            {
+                var readers = inputChannels.Select(c => c.Reader);
+                var writer = outputChannel.Writer;
+
+                while(!_stopping)
+                {
+                    foreach(var reader in readers )
+                    {
+                        try
+                        {
+                            var result = await reader.ReadAsync().ConfigureAwait(false);
+                            await writer.WriteAsync(result).ConfigureAwait(false);
+                        }
+                        catch(Exception ex)
+                        {
+                            LogMessage($"Exception during channel merge:{ex.ToString()}");
+                            //Just continue to next on errors or timeouts
+                        }
+                    }
+                    await Task.Delay(mergeDelay).ConfigureAwait(false);
+                }
+            });
         }
 
         /// <summary> Starts capturing and processing video frames. </summary>
         /// <param name="frameGrabDelay"> The frame grab delay. </param>
         /// <param name="timestampFn">    Function to generate the timestamp for each frame. This
         ///     function will get called once per frame. </param>
-        protected void StartProcessing(VideoStream videoStream)
+        public void StartProcessingAll()
         {
-            _producerTask = Task.Run(() => videoStream.StartProcessingAsync(_capturingChannel));
+            var analysisChannel = CreateMergeChannel(_capturingChannels.Count);
+            _mergeTask = MergeChannels(_capturingChannels, analysisChannel, _analysisInterval);
 
             _consumerTask = Task.Run(async () =>
             {
-                var reader = _capturingChannel.Reader;
+                var reader = analysisChannel.Reader;
 
                 while (!_stopping)
                 {
@@ -213,20 +280,20 @@ namespace VideoFrameAnalyzer
 
                     var startTime = DateTime.Now;
 
-                    var result = await DoAnalyzeFrame(vframe);
+                    try
+                    {
+                        var result = await DoAnalyzeFrame(vframe);
 
-                    LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).Milliseconds);
+                        LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).Milliseconds);
 
-                    var nextAnalysisDue = Task.Delay(_analysisInterval);
-
-                    OnNewResultAvailable(result);
-
-                    await nextAnalysisDue;
+                        OnNewResultAvailable(result);
+                    }
+                    catch(Exception ex)
+                    {
+                        LogMessage($"Exception in consumertaks:{ex.Message}");
+                        //try to continue always
+                    }
                 }
-
-                LogMessage("Producer: stopping, destroy reader and timer");
-
-                videoStream.StopProcessing();
 
                 LogMessage("Consumer: stopping");
             });
@@ -240,16 +307,26 @@ namespace VideoFrameAnalyzer
             OnProcessingStopping();
 
             _stopping = true;
-            if (_producerTask != null)
-            {
-                await _producerTask;
-                _producerTask = null;
-            }
+
             if (_consumerTask != null)
             {
                 await _consumerTask;
                 _consumerTask = null;
             }
+
+            if (_mergeTask != null)
+            {
+                await _mergeTask;
+                _mergeTask = null;
+            }
+
+            foreach (VideoStream vs in _streams)
+            {
+                await vs.StopProcessingAsync();
+                vs.Dispose();
+            }
+            _streams.Clear();
+
             _stopping = false;
 
             OnProcessingStopped();
@@ -299,10 +376,10 @@ namespace VideoFrameAnalyzer
             {
                 if (disposing)
                 {
-                    _frameGrabTimer?.Dispose();
-                    _timer?.Dispose();
-                    _timerMutex?.Dispose();
-                    _analysisTaskQueue?.Dispose();
+                    //_frameGrabTimer?.Dispose();
+                    //_timer?.Dispose();
+                    //_timerMutex?.Dispose();
+                    //_analysisTaskQueue?.Dispose();
                 }
 
                 disposedValue = true;

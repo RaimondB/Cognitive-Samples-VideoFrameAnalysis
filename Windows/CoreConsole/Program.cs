@@ -68,6 +68,8 @@ namespace BasicConsoleSample
                     Console.WriteLine($"API call threw an exception: {e.Exception}");
                 else
                 {
+                    using Mat inputImage = e.Frame.Image;
+
                     Console.WriteLine($"New result received for frame acquired at {e.Frame.Metadata.Timestamp}. {e.Analysis.Length} objects detected");
                     foreach (var dObj in e.Analysis)
                     {
@@ -78,10 +80,12 @@ namespace BasicConsoleSample
                                                                 o.Label != "truck" &&
                                                                 o.Label != "clock"))
                     {
-                        var result = Visualizer.AnnotateImage(e.Frame.Image, e.Analysis);
-                        var filename = $".\\captures\\obj-{GetTimestampedSortable(e.Frame.Metadata)}.jpg";
-                        Cv2.ImWrite(filename, result);
-                        Console.WriteLine($"Interesting Detection Saved: {filename}");
+                        using (var result = Visualizer.AnnotateImage(e.Frame.Image, e.Analysis))
+                        {
+                            var filename = $".\\captures\\obj-{GetTimestampedSortable(e.Frame.Metadata)}.jpg";
+                            Cv2.ImWrite(filename, result);
+                            Console.WriteLine($"Interesting Detection Saved: {filename}");
+                        }
                     }
                 }
             };
@@ -93,21 +97,26 @@ namespace BasicConsoleSample
             // Start running in the background.
             //grabber.StartProcessingCameraAsync().Wait();
 
-            await grabber.StartProcessingFileAsync(
-                @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
-                isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
-
+            //await grabber.StartProcessingFileAsync(
+            //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
+            //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
 
             //await grabber.StartProcessingFileAsync(
-            //    @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
-            //    rotateFlags: RotateFlags.Rotate90Clockwise
-            //    , overrideFPS: 15
-            //);
+            //      @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4",
+            //      isContinuousStream: false);
 
-            //grabber.StartProcessingFileAsync(
-            //    @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102",
-            //    overrideFPS: 30).Wait();
 
+            await grabber.StartProcessingFileAsync(
+                @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
+                rotateFlags: RotateFlags.Rotate90Clockwise
+                , overrideFPS: 15
+            );
+
+            await grabber.StartProcessingFileAsync(
+                @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102",
+                overrideFPS: 30);
+
+            grabber.StartProcessingAll();
 
 
             // Wait for keypress to stop
@@ -124,7 +133,7 @@ namespace BasicConsoleSample
             return $"{metaData.Timestamp:yyyyMMddTHHmmss}-{metaData.Index:00000}";
         }
 
-        private static Yolo2DnnDetector _dnnDetector = new Yolo2DnnDetector();
+        private static Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
 
         private static Task<DnnDetectedObject[]> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {

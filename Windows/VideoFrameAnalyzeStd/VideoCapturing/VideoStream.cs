@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.IsolatedStorage;
 using System.Text;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using VideoFrameAnalyzer;
@@ -30,6 +31,8 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
         public RotateFlags? RotateFlags { get; }
 
         private bool _stopping;
+        private bool disposedValue;
+        private Task _executionTask;
 
         public VideoStream(string streamName, string path, double fps = 0, bool isContinuous = true, RotateFlags? rotateFlags = null)
         {
@@ -47,7 +50,7 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
             ConcurrentLogger.WriteLine(String.Format(format, args));
         }
 
-        public VideoCapture StartCapturing()
+        public VideoCapture InitCapture()
         {
             _videoCapture = new VideoCapture(Path);
 
@@ -61,83 +64,130 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
             return _videoCapture;
         }
 
-        public void StopProcessing()
+        public async Task StopProcessingAsync()
         {
+            LogMessage("Producer: stopping, destroy reader and timer");
             _stopping = true;
+            await _executionTask;
+            _executionTask = null;
+            _stopping = false;
         }
 
-        public async Task StartProcessingAsync(Channel<VideoFrame> outputChannel)
+        public void StartProcessingAsync(Channel<VideoFrame> outputChannel, TimeSpan publicationInterval)
         {
-            using (var reader = this.StartCapturing())
+            _executionTask = Task.Run(async () =>
             {
-
-                var width = reader.FrameWidth;
-                var height = reader.FrameHeight;
-                int frameCount = 0;
-                int delayMs = (int)(500.0 / this.Fps);
-
-                var writer = outputChannel.Writer;
-
-                while (!_stopping)
+                using (var reader = this.InitCapture())
                 {
-                    var startTime = DateTime.Now;
+                    var width = reader.FrameWidth;
+                    var height = reader.FrameHeight;
+                    int frameCount = 0;
+                    int delayMs = (int)(500.0 / this.Fps);
 
-                    // Grab single frame.
-                    var timestamp = DateTime.Now;
+                    var writer = outputChannel.Writer;
+                    Mat imageBuffer = new Mat();
+                    Mat publishedImage;
 
-                    Mat image = new Mat();
-                    bool success = reader.Read(image);
-                    frameCount++;
-
-                    LogMessage("Producer: frame-grab took {0} ms", (DateTime.Now - startTime).Milliseconds);
-
-                    if (!success)
+                    var nextpublicationTime = DateTime.Now;
+                    while (!_stopping)
                     {
-                        // If we've reached the end of the video, stop here.
-                        if (!IsContinuous)
+                        var startTime = DateTime.Now;
+                        // Grab single frame.
+                        var timestamp = DateTime.Now;
+
+                        bool success = reader.Read(imageBuffer);
+                        frameCount++;
+
+                        var endTime = DateTime.Now;
+                        //LogMessage("Producer: frame-grab took {0} ms", (endTime - startTime).Milliseconds);
+
+                        if (!success)
                         {
-                            LogMessage("Producer: null frame from video file, stop!");
-                            // This will call StopProcessing on a new thread.
-                            _stopping = true;
-                            writer.Complete();
-                            // Break out of the loop to make sure we don't try grabbing more
-                            // frames.
-                            break;
+                            // If we've reached the end of the video, stop here.
+                            if (!IsContinuous)
+                            {
+                                LogMessage("Producer: null frame from video file, stop!");
+                                // This will call StopProcessing on a new thread.
+                                _stopping = true;
+                                writer.Complete();
+                                // Break out of the loop to make sure we don't try grabbing more
+                                // frames.
+                                break;
+                            }
+                            else
+                            {
+                                // If failed on live camera, try again.
+                                LogMessage("Producer: null frame from live camera, continue!");
+                                continue;
+                            }
                         }
-                        else
+
+                        if (timestamp > nextpublicationTime)
                         {
-                            // If failed on live camera, try again.
-                            LogMessage("Producer: null frame from live camera, continue!");
-                            continue;
+                            LogMessage("Producer: create frame to publish:");
+                            nextpublicationTime = timestamp + publicationInterval;
+                            if (RotateFlags.HasValue)
+                            {
+                                Mat rotImage = new Mat();
+                                Cv2.Rotate(imageBuffer, rotImage, RotateFlags.Value);
+
+                                publishedImage = rotImage;
+                            }
+                            else
+                            {
+                                Mat cloneImage = new Mat();
+                                Cv2.CopyTo(imageBuffer, cloneImage);
+
+                                publishedImage = cloneImage;
+                            }
+
+                            // Package the image for submission.
+                            VideoFrameMetadata meta;
+                            meta.Index = frameCount;
+                            meta.Timestamp = timestamp;
+                            VideoFrame vframe = new VideoFrame(publishedImage, meta);
+
+                            LogMessage("Producer: do publishing");
+                            var writeResult = writer.TryWrite(vframe);
                         }
+                        //Thread.Sleep(delayMs);
+                        await Task.Delay(delayMs).ConfigureAwait(false);
                     }
-
-                    if (RotateFlags.HasValue)
-                    {
-                        Mat rotImage = new Mat();
-                        Cv2.Rotate(image, rotImage, RotateFlags.Value);
-
-                        image = rotImage;
-                    }
-
-                    // Package the image for submission.
-                    VideoFrameMetadata meta;
-                    meta.Index = frameCount;
-                    meta.Timestamp = timestamp;
-                    VideoFrame vframe = new VideoFrame(image, meta);
-
-                    writer.TryWrite(vframe);
-
-                    await Task.Delay(delayMs);
                 }
-            }
+            });
             // We reach this point by breaking out of the while loop. So we must be stopping.
         }
 
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    _videoCapture?.Dispose();
+                    _videoCapture = null;
+                    _executionTask?.Wait();
+                    _executionTask = null;
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
+                // TODO: set large fields to null
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
+        // ~VideoStream()
+        // {
+        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        //     Dispose(disposing: false);
+        // }
 
         public void Dispose()
         {
-            ((IDisposable)_videoCapture).Dispose();
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }

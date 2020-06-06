@@ -34,39 +34,70 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace VideoFrameAnalyzer
 {
     public static class ConcurrentLogger
     {
-        private readonly static SemaphoreSlim s_printMutex = new SemaphoreSlim(1);
-        private readonly static BlockingCollection<string> s_messageQueue = new BlockingCollection<string>();
+        //private readonly static SemaphoreSlim s_printMutex = new SemaphoreSlim(1);
+        //private readonly static BlockingCollection<string> s_messageQueue = new BlockingCollection<string>();
 
-        public static void WriteLine(string message)
+        private readonly static Channel<string> _messageChannel = Channel.CreateUnbounded<string>(
+        new UnboundedChannelOptions()
         {
-            var timestamp = DateTime.Now;
-            // Push the message on the queue
-            s_messageQueue.Add(timestamp.ToString("o") + ": " + message);
-            // Start a new task that will dequeue one message and print it. The tasks will not
-            // necessarily run in order, but since each task just takes the oldest message and
-            // prints it, the messages will print in order. 
+            AllowSynchronousContinuations = true,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        static ConcurrentLogger()
+        {
+            StartPrintMessageLoop();
+        }
+
+        private static void StartPrintMessageLoop()
+        {
             Task.Run(async () =>
             {
-                // Wait to get access to the queue. 
-#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task: Sync needed because of console writeline
-                await s_printMutex.WaitAsync();
-#pragma warning restore CA2007 // 
-                try
+                var reader = _messageChannel.Reader;
+                while (true)
                 {
-                    string msg = s_messageQueue.Take();
+                    var msg = await reader.ReadAsync().ConfigureAwait(false);
                     Console.WriteLine(msg);
-                }
-                finally
-                {
-                    s_printMutex.Release();
                 }
             });
         }
+
+        public static void WriteLine(string message)
+        {
+            _messageChannel.Writer.TryWrite($"{DateTime.Now:o}: {message}");
+        }
+
+//        public static void WriteLine(string message)
+//        {
+//            // Push the message on the queue
+//            s_messageQueue.Add($"{DateTime.Now:o}: {message}");
+//            // Start a new task that will dequeue one message and print it. The tasks will not
+//            // necessarily run in order, but since each task just takes the oldest message and
+//            // prints it, the messages will print in order. 
+//            Task.Run(async () =>
+//            {
+//                // Wait to get access to the queue. 
+//#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task: Sync needed because of console writeline
+//                await s_printMutex.WaitAsync();
+//#pragma warning restore CA2007 // 
+//                try
+//                {
+//                    string msg = s_messageQueue.Take();
+//                    Console.WriteLine(msg);
+//                }
+//                finally
+//                {
+//                    s_printMutex.Release();
+//                }
+//            });
+//        }
     }
 }

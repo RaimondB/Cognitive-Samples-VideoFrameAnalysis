@@ -37,6 +37,7 @@ namespace VideoFrameAnalyzer
         private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
 
         private OpenCvSharp.Dnn.Net nnet;
+        private Mat[] outs; 
 
         public Yolo3DnnDetector()
         {
@@ -44,6 +45,7 @@ namespace VideoFrameAnalyzer
             //nnet.SetPreferableBackend(Net.Backend.INFERENCE_ENGINE);
             //nnet.SetPreferableTarget(Net.Target.CPU);
             _outNames = nnet.GetUnconnectedOutLayersNames();
+            outs = Enumerable.Repeat(false, _outNames.Length).Select(_ => new Mat()).ToArray();
         }
 
         public DnnDetectedObject[] ClassifyObjects(Mat image, Rect boxToAnalyze)
@@ -53,11 +55,8 @@ namespace VideoFrameAnalyzer
                 throw new InvalidOperationException($"{nameof(image)} is invalid");
             }
 
-            var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), crop: false);
+            using var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), crop: false);
             nnet.SetInput(blob);
-
-            //create mats for output layer
-            Mat[] outs = Enumerable.Repeat(false, _outNames.Length).Select(_ => new Mat()).ToArray();
 
             //forward model
             nnet.Forward(outs, _outNames);
