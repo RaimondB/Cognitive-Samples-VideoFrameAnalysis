@@ -31,30 +31,39 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // 
 
+using OpenCvSharp;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
-using OpenCvSharp;
 using VideoFrameAnalyzer;
 
 namespace BasicConsoleSample
 {
     internal class Program
     {
+        private static SemaphoreSlim waitUntilExit = new SemaphoreSlim(0);
+
+        private static MultiFrameGrabber<DnnDetectedObject[]> grabber =
+            new MultiFrameGrabber<DnnDetectedObject[]>();
+
         private static async Task Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             // Create grabber. 
-            var grabber = new MultiFrameGrabber<DnnDetectedObject[]>();
+
+            Console.CancelKeyPress += delegate (object sender, ConsoleCancelEventArgs e)
+            {
+                waitUntilExit.Release();
+            };
 
             // Set up a listener for when we acquire a new frame.
-//            grabber.NewFrameProvided += (s, e) =>
-//            {
-////                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
-//            };
+            //            grabber.NewFrameProvided += (s, e) =>
+            //            {
+            ////                Console.WriteLine($"New frame acquired at {e.Frame.Metadata.Timestamp}");
+            //            };
 
             // Set up Face API call.
             grabber.AnalysisFunction = OpenCVDNNYoloPeopleDetect;
@@ -75,8 +84,8 @@ namespace BasicConsoleSample
                     {
                         Console.WriteLine($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
                     }
-                    
-                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label != "car" && 
+
+                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label != "car" &&
                                                                 o.Label != "truck" &&
                                                                 o.Label != "clock"))
                     {
@@ -106,13 +115,13 @@ namespace BasicConsoleSample
             //      isContinuousStream: false);
 
 
-            await grabber.StartProcessingFileAsync(
+            grabber.StartProcessingFileAsync(
                 @"rtsp://cam-admin:M3s%21Ew9JEH%2A%23@foscam.home:88/videoSub",
                 rotateFlags: RotateFlags.Rotate90Clockwise
                 , overrideFPS: 15
             );
 
-            await grabber.StartProcessingFileAsync(
+            grabber.StartProcessingFileAsync(
                 @"rtsp://admin:nCmDZx8U@192.168.2.125:554/Streaming/Channels/102",
                 overrideFPS: 30);
 
@@ -120,11 +129,12 @@ namespace BasicConsoleSample
 
 
             // Wait for keypress to stop
-            Console.WriteLine("Press any key to stop...");
-            Console.ReadKey();
+            Console.WriteLine("Press Ctrl-C to stop...");
 
             // Stop, blocking until done.
-            await grabber.StopProcessingAsync();
+            await waitUntilExit.WaitAsync().ConfigureAwait(false);
+
+            await grabber.StopProcessingAsync().ConfigureAwait(false);
             grabber.Dispose();
         }
 

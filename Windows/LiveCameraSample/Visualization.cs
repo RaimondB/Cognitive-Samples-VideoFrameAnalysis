@@ -70,9 +70,8 @@ namespace LiveCameraSample
 
                 return outputBitmap;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                int a = 1;
                 return baseImage;
             }
         }
@@ -92,7 +91,7 @@ namespace LiveCameraSample
                     // Create formatted text--in a particular font at a particular size
                     FormattedText ft = new FormattedText(tag.Name,
                         CultureInfo.CurrentCulture, FlowDirection.LeftToRight, s_typeface,
-                        42 * annotationScale , Brushes.Black, 1);
+                        42 * annotationScale, Brushes.Black, 1);
 
                     // Instead of calling DrawText (which can only draw the text in a solid colour), we
                     // convert to geometry and use DrawGeometry, which allows us to add an outline. 

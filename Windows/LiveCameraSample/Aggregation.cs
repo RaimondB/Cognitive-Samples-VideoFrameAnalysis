@@ -31,10 +31,10 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // 
 
+using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
 
 namespace LiveCameraSample
 {

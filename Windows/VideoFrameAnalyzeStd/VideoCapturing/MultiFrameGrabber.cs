@@ -1,17 +1,16 @@
 // Uncomment this to enable the LogMessage function, which can with debugging timing issues.
 #define TRACE_GRABBER
 
+using OpenCvSharp;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Threading.Channels;
-
-using OpenCvSharp;
+using System.Threading.Tasks;
 using VideoFrameAnalyzeStd.VideoCapturing;
 using System.Linq;
+using System.Globalization;
 
 namespace VideoFrameAnalyzer
 {
@@ -23,7 +22,7 @@ namespace VideoFrameAnalyzer
         #region Types
 
         /// <summary> Additional information for new frame events. </summary>
-        /// <seealso cref="T:System.EventArgs"/>
+        /// <seealso cref="System.EventArgs"/>
         public class NewFrameEventArgs : EventArgs
         {
             public NewFrameEventArgs(VideoFrame frame)
@@ -35,7 +34,7 @@ namespace VideoFrameAnalyzer
 
         /// <summary> Additional information for new result events, which occur when an API call
         ///     returns. </summary>
-        /// <seealso cref="T:System.EventArgs"/>
+        /// <seealso cref="System.EventArgs"/>
         public class NewResultEventArgs : EventArgs
         {
             public NewResultEventArgs(VideoFrame frame)
@@ -93,13 +92,11 @@ namespace VideoFrameAnalyzer
 
         #region Fields
 
-        protected Predicate<VideoFrame> _analysisPredicate = null;
-        protected List<VideoStream> _streams = new List<VideoStream>();
+        private List<VideoStream> _streams = new List<VideoStream>();
 
-        protected bool _stopping = false;
-        protected Task _producerTask = null;
-        protected Task _consumerTask = null;
-        protected Task _mergeTask = null;
+        private bool _stopping = false;
+        private Task _consumerTask = null;
+        private Task _mergeTask = null;
 
         private bool disposedValue = false;
 
@@ -117,21 +114,21 @@ namespace VideoFrameAnalyzer
         [Conditional("TRACE_GRABBER")]
         protected void LogMessage(string format, params object[] args)
         {
-            ConcurrentLogger.WriteLine(String.Format(format, args));
+            ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
-        protected async Task<(bool,TResult)> DoWithTimeout<TResult>(Func<Task<TResult>> func, TimeSpan timeout)
+        protected async Task<(bool, TResult)> DoWithTimeout<TResult>(Func<Task<TResult>> func, TimeSpan timeout)
         {
             using (CancellationTokenSource source = new CancellationTokenSource())
             {
                 source.CancelAfter(timeout);
 
-                try 
+                try
                 {
                     var result = await Task.Run(func, source.Token);
                     return (true, result);
                 }
-                catch(OperationCanceledException ex)
+                catch (OperationCanceledException ex)
                 {
                     LogMessage($"Exception in dowithtimeout:{ex.Message}");
                     return (false, default(TResult));
@@ -211,26 +208,24 @@ namespace VideoFrameAnalyzer
         private List<Channel<VideoFrame>> _capturingChannels = new List<Channel<VideoFrame>>();
 
 
-        public Task StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
+        public void StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
         {
             VideoStream vs = new VideoStream("first", fileName, overrideFPS, isContinuousStream, rotateFlags);
 
             _streams.Add(vs);
-            
+
             var newChannel = CreateCapturingChannel();
             _capturingChannels.Add(newChannel);
-            
-            vs.StartProcessingAsync(newChannel, TimeSpan.FromSeconds(3));
 
-            return Task.CompletedTask;
+            vs.StartProcessingAsync(newChannel, TimeSpan.FromSeconds(3));
         }
 
         public Task MergeChannels<T>(
             IList<Channel<T>> inputChannels, Channel<IList<T>> outputChannel, TimeSpan mergeDelay)
         {
             var timeout = TimeSpan.FromMilliseconds(50);
-//            using var cts = new CancellationTokenSource();
-//            using var timeoutCts = new CancellationTokenSource();
+            //            using var cts = new CancellationTokenSource();
+            //            using var timeoutCts = new CancellationTokenSource();
             //timeoutCts.CancelAfter(150);
 
             return Task.Run(async () =>
@@ -238,17 +233,17 @@ namespace VideoFrameAnalyzer
                 var readers = inputChannels.Select(c => c.Reader).ToArray();
                 var writer = outputChannel.Writer;
 
-                while(!_stopping)
+                while (!_stopping)
                 {
                     List<T> results = new List<T>();
-                    for(var index = 0; index < readers.Length; index++ )
+                    for (var index = 0; index < readers.Length; index++)
                     {
                         try
                         {
                             var result = await readers[index].ReadAsync().ConfigureAwait(false);
                             results.Add(result);
                         }
-                        catch(Exception ex)
+                        catch (Exception ex)
                         {
                             LogMessage($"Exception during channel merge:{ex.ToString()}");
                             //Just continue to next on errors or timeouts
@@ -278,10 +273,10 @@ namespace VideoFrameAnalyzer
                 {
                     LogMessage("Consumer: waiting for next result to arrive");
 
-                    var vframes = await reader.ReadAsync();
-
                     try
                     {
+                        var vframes = await reader.ReadAsync();
+
                         foreach (var vframe in vframes)
                         {
                             var startTime = DateTime.Now;
@@ -293,9 +288,9 @@ namespace VideoFrameAnalyzer
                             OnNewResultAvailable(result);
                         }
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
-                        LogMessage($"Exception in consumertaks:{ex.Message}");
+                        LogMessage($"Exception in consumertask:{ex.Message}");
                         //try to continue always
                     }
                 }

@@ -5,13 +5,21 @@ VisualStudioVersion = 16.0.30114.105
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveCameraSample", "LiveCameraSample\LiveCameraSample.csproj", "{5B40977E-E8FA-41BC-8F0A-6D6FDE237571}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoreConsole", "CoreConsole\CoreConsole.csproj", "{58175C48-520B-4A9D-A114-4EE268C4C663}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CoreConsole", "CoreConsole\CoreConsole.csproj", "{58175C48-520B-4A9D-A114-4EE268C4C663}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoFrameAnalyzeStd", "VideoFrameAnalyzeStd\VideoFrameAnalyzeStd.csproj", "{3CFA6DE4-0A46-467A-B2F9-E4B028241BF2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VideoFrameAnalyzeStd", "VideoFrameAnalyzeStd\VideoFrameAnalyzeStd.csproj", "{3CFA6DE4-0A46-467A-B2F9-E4B028241BF2}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{94B75B7B-7D23-4CE7-AD2C-F8D3FF0AB214}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		..\opencv\install-opencv-linux.sh = ..\opencv\install-opencv-linux.sh
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "YoloData", "YoloData", "{83C213E2-2C0F-428C-819A-754EE6D30523}"
+	ProjectSection(SolutionItems) = preProject
+		CoreConsole\YoloData\coco.names = CoreConsole\YoloData\coco.names
+		CoreConsole\YoloData\yolov3.cfg = CoreConsole\YoloData\yolov3.cfg
+		CoreConsole\YoloData\yolov3.weights = CoreConsole\YoloData\yolov3.weights
 	EndProjectSection
 EndProject
 Global
@@ -35,6 +43,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{83C213E2-2C0F-428C-819A-754EE6D30523} = {94B75B7B-7D23-4CE7-AD2C-F8D3FF0AB214}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {74E87FB9-4431-4EFE-8E42-8FB61547F697}

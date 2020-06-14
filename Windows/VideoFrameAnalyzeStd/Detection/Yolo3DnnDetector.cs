@@ -4,31 +4,24 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace VideoFrameAnalyzer
 {
     public class Yolo3DnnDetector
     {
         string[] _outNames;
-        //private static string prott1 = @"C:\Users\Raimo\Downloads\MobileNetSSD_deploy.prototxt";
-        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_iter_73000.caffemodel";
 
-        //private static string prott1 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.prototxt";
-        //private static string prott2 = @"C:\Users\Raimo\Downloads\mobilenet_yolov3_lite_deploy.caffemodel";
-        //private OpenCvSharp.Dnn.Net nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromCaffe(prott1, prott2);
-
+        private const string DataRoot = @"C:\Users\raimo\OneDrive\Repos\Cognitive-Samples-VideoFrameAnalysis\YoloData";
 
         //YOLOv3
         //https://github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
-        private const string Cfg = @"C:\Users\Raimo\Downloads\yolov3.cfg";
+        private const string Cfg = DataRoot + @"\yolov3.cfg";
 
         //https://pjreddie.com/media/files/yolov3.weights
-        private const string Weight = @"C:\Users\Raimo\Downloads\yolov3.weights";
+        private const string Weight = DataRoot + @"\yolov3.weights";
 
         //https://github.com/pjreddie/darknet/blob/master/data/coco.names
-        private const string Names = @"C:\Users\Raimo\Downloads\coco.names";
+        private const string Names = DataRoot + @"\coco.names";
 
         //random assign color to each label
         private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
@@ -37,7 +30,7 @@ namespace VideoFrameAnalyzer
         private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
 
         private OpenCvSharp.Dnn.Net nnet;
-        private Mat[] outs; 
+        private Mat[] outs;
 
         public Yolo3DnnDetector()
         {
@@ -45,14 +38,14 @@ namespace VideoFrameAnalyzer
             //nnet.SetPreferableBackend(Net.Backend.INFERENCE_ENGINE);
             //nnet.SetPreferableTarget(Net.Target.CPU);
             _outNames = nnet.GetUnconnectedOutLayersNames();
-            outs = Enumerable.Repeat(false, _outNames.Length).Select(_ => new Mat()).ToArray();
+            outs = Enumerable.Repeat(_, _outNames.Length).Select(_ => new Mat()).ToArray();
         }
 
         public DnnDetectedObject[] ClassifyObjects(Mat image, Rect boxToAnalyze)
         {
-            if (image == null || image.Width <= 0 || image.Height <= 0)
+            if (image == null)
             {
-                throw new InvalidOperationException($"{nameof(image)} is invalid");
+                throw new ArgumentNullException($"{nameof(image)}");
             }
 
             using var blob = CvDnn.BlobFromImage(image, 1.0 / 255, new Size(320, 320), crop: false);

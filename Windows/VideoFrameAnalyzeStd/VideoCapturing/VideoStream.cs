@@ -2,11 +2,8 @@
 
 using OpenCvSharp;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO.IsolatedStorage;
-using System.Text;
-using System.Threading;
+using System.Globalization;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using VideoFrameAnalyzer;
@@ -16,7 +13,7 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
 
     public class VideoStream : IDisposable
     {
-        public string Path  { get; }
+        public string Path { get; }
 
         private double _fps;
         public double Fps => _fps;
@@ -45,9 +42,9 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
         }
 
         [Conditional("TRACE_GRABBER")]
-        protected void LogMessage(string format, params object[] args)
+        private static void LogMessage(string format, params object[] args)
         {
-            ConcurrentLogger.WriteLine(String.Format(format, args));
+            ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
         public VideoCapture InitCapture()
@@ -73,7 +70,7 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
             _stopping = false;
         }
 
-        public void StartProcessingAsync(Channel<VideoFrame> outputChannel, TimeSpan publicationInterval)
+        public Task StartProcessingAsync(Channel<VideoFrame> outputChannel, TimeSpan publicationInterval)
         {
             _executionTask = Task.Run(async () =>
             {
@@ -155,6 +152,7 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
                     }
                 }
             });
+            return _executionTask;
             // We reach this point by breaking out of the while loop. So we must be stopping.
         }
 

@@ -31,8 +31,8 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // 
 
-using System;
 using OpenCvSharp;
+using System;
 
 namespace VideoFrameAnalyzer
 {

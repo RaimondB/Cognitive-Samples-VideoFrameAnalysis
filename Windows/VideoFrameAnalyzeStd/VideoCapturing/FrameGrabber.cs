@@ -34,12 +34,13 @@
 // Uncomment this to enable the LogMessage function, which can with debugging timing issues.
 //#define TRACE_GRABBER
 
+using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using OpenCvSharp;
 
 namespace VideoFrameAnalyzer
 {
@@ -57,7 +58,7 @@ namespace VideoFrameAnalyzer
         #region Types
 
         /// <summary> Additional information for new frame events. </summary>
-        /// <seealso cref="T:System.EventArgs"/>
+        /// <seealso cref="System.EventArgs"/>
         public class NewFrameEventArgs : EventArgs
         {
             public NewFrameEventArgs(VideoFrame frame)
@@ -69,7 +70,7 @@ namespace VideoFrameAnalyzer
 
         /// <summary> Additional information for new result events, which occur when an API call
         ///     returns. </summary>
-        /// <seealso cref="T:System.EventArgs"/>
+        /// <seealso cref="System.EventArgs"/>
         public class NewResultEventArgs : EventArgs
         {
             public NewResultEventArgs(VideoFrame frame)
@@ -127,21 +128,21 @@ namespace VideoFrameAnalyzer
 
         #region Fields
 
-        protected Predicate<VideoFrame> _analysisPredicate = null;
-        protected VideoCapture _reader = null;
-        protected bool _readerIsContinuous = false;
+        private Predicate<VideoFrame> _analysisPredicate = null;
+        private VideoCapture _reader = null;
+        private bool _readerIsContinuous = false;
 
-        protected Timer _timer = null;
-        protected SemaphoreSlim _timerMutex = new SemaphoreSlim(1);
-        protected AutoResetEvent _frameGrabTimer = new AutoResetEvent(false);
-        protected bool _stopping = false;
-        protected Task _producerTask = null;
-        protected Task _consumerTask = null;
-        protected BlockingCollection<Task<NewResultEventArgs>> _analysisTaskQueue = null;
-        protected bool _resetTrigger = true;
-        protected int _numCameras = -1;
-        protected int _currCameraIdx = -1;
-        protected double _fps = 0;
+        private Timer _timer = null;
+        private SemaphoreSlim _timerMutex = new SemaphoreSlim(1);
+        private AutoResetEvent _frameGrabTimer = new AutoResetEvent(false);
+        private bool _stopping = false;
+        private Task _producerTask = null;
+        private Task _consumerTask = null;
+        private BlockingCollection<Task<NewResultEventArgs>> _analysisTaskQueue = null;
+        private bool _resetTrigger = true;
+        private int _numCameras = -1;
+        private int _currCameraIdx = -1;
+        private double _fps = 0;
         private bool disposedValue = false;
 
         #endregion Fields
@@ -158,7 +159,7 @@ namespace VideoFrameAnalyzer
         [Conditional("TRACE_GRABBER")]
         protected void LogMessage(string format, params object[] args)
         {
-            ConcurrentLogger.WriteLine(String.Format(format, args));
+            ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
         /// <summary> Starts processing frames from a live camera. Stops any current video source
@@ -187,7 +188,7 @@ namespace VideoFrameAnalyzer
             Height = _reader.FrameHeight;
 
             StartProcessing(TimeSpan.FromSeconds(1 / _fps), () => DateTime.Now, rotateFlags);
-            
+
             _currCameraIdx = cameraIndex;
         }
 
@@ -380,7 +381,7 @@ namespace VideoFrameAnalyzer
 
                         // Raise the new result event.
                         LogMessage("Consumer: got result for frame {0}. {1} tasks in queue", result.Frame.Metadata.Index, _analysisTaskQueue.Count);
-                        
+
                         //SendOrPostCallback x = (o) => OnNewResultAvailable((NewResultEventArgs)o);
                         //syncCtx.Post(x, result);
 

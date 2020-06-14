@@ -31,6 +31,13 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // 
 
+using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
+using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
+using Microsoft.Azure.CognitiveServices.Vision.Face;
+using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
+using Newtonsoft.Json.Linq;
+using OpenCvSharp;
+using OpenCvSharp.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -41,22 +48,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
-using Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
-using Microsoft.Azure.CognitiveServices.Vision.Face;
-using Microsoft.Azure.CognitiveServices.Vision.Face.Models;
-using Newtonsoft.Json.Linq;
-using OpenCvSharp;
-using OpenCvSharp.Extensions;
-using OpenCvSharp.Dnn;
-
 using VideoFrameAnalyzer;
 using FaceAPI = Microsoft.Azure.CognitiveServices.Vision.Face;
 using Rect = OpenCvSharp.Rect;
 using Size = OpenCvSharp.Size;
 using VisionAPI = Microsoft.Azure.CognitiveServices.Vision.ComputerVision;
-using System.IO;
-using Microsoft.Azure.CognitiveServices.Vision.ComputerVision.Models;
-using Point = OpenCvSharp.Point;
 
 namespace LiveCameraSample
 {
@@ -338,7 +334,7 @@ namespace LiveCameraSample
 
             try
             {
-                var image = frame.Image; //.ToMemoryStream(".jpg", s_jpegParams);
+                var image = frame.Image;
                 if (image == null)
                 {
                     return Task.FromResult(new LiveCameraResult { Faces = new DetectedFace[0] });
@@ -373,9 +369,8 @@ namespace LiveCameraSample
                     // compute the absolute difference between the current frame and first frame
                     Cv2.Absdiff(_diffBaseFrame, gray, frameDelta);
                     var tresh = new Mat();
-                    //Cv2.Threshold(frameDelta, tresh, 25, 255, ThresholdTypes.Binary);
-                    Cv2.Threshold(frameDelta, tresh, 30, 255, ThresholdTypes.Binary | ThresholdTypes.Otsu);
 
+                    Cv2.Threshold(frameDelta, tresh, 30, 255, ThresholdTypes.Binary | ThresholdTypes.Otsu);
 
                     // dilate the thresholded image to fill in holes, then find contours on thresholded image
                     Cv2.Dilate(tresh, tresh, _dilateElement, iterations: 2);
@@ -387,6 +382,7 @@ namespace LiveCameraSample
                     Mat newTresh = new Mat();
                     Mat hierarchy = new Mat();
                     tresh.CopyTo(newTresh);
+
                     //cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
                     Cv2.FindContours(newTresh, out cnts, hierarchy, RetrievalModes.External,
                         ContourApproximationModes.ApproxTC89KCOS);
@@ -394,9 +390,6 @@ namespace LiveCameraSample
 
                     List<Rect> boxes = new List<Rect>();
                     List<double> areas = new List<double>();
-
-                    //ClassifyObjects(image, r);
-
 
                     //loop over the contours identified
                     //contourcount = 0
@@ -449,7 +442,7 @@ namespace LiveCameraSample
             }
             catch (Exception ex)
             {
-                int a = 1;
+                ConcurrentLogger.WriteLine($"Exception in OpenCVDiffContourPeopleDetect:{ex.Message}:{ex.StackTrace}");
             }
             result.Faces = faces.ToArray();
 
@@ -638,7 +631,6 @@ namespace LiveCameraSample
             catch (Exception ex)
             {
                 ConcurrentLogger.WriteLine("Exception at Visualize:" + ex.Message);
-                int a = 1;
             }
             return null;
         }

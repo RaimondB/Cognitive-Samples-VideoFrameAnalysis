@@ -1,15 +1,13 @@
 ﻿using OpenCvSharp;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace VideoFrameAnalyzer
 {
     public static class Visualizer
     {
-        private static T CropInRange<T>(this T value, T lowerBound, T upperBound) where T : IComparable<T> 
+        private static T CropInRange<T>(this T value, T lowerBound, T upperBound) where T : IComparable<T>
         {
-            if(value.CompareTo(lowerBound) < 0)
+            if (value.CompareTo(lowerBound) < 0)
             {
                 return lowerBound;
             }
@@ -45,12 +43,12 @@ namespace VideoFrameAnalyzer
                 var yLabelTop = y1.CropInRange(0, y1 - textSize.Height - baseline);
 
                 //draw result boundingbox
-                result.Rectangle(new Point(x1, y1), new Point(x1+w, y1+h), color, 2);
-                
+                result.Rectangle(new Point(x1, y1), new Point(x1 + w, y1 + h), color, 2);
+
                 //draw result label on top of boundingbox
                 Cv2.Rectangle(result, new Rect(new Point(x1, y1 - textSize.Height - baseline),
                         new Size(textSize.Width, textSize.Height + baseline)), color, Cv2.FILLED);
-                Cv2.PutText(result, label, new Point(x1, y1 - baseline), 
+                Cv2.PutText(result, label, new Point(x1, y1 - baseline),
                     HersheyFonts.HersheyTriplex, 0.5, Scalar.Black);
             }
             return result;

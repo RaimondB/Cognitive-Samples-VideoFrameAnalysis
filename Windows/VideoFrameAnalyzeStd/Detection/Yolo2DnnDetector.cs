@@ -4,8 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace VideoFrameAnalyzer
 {
@@ -65,10 +63,10 @@ namespace VideoFrameAnalyzer
             const float threshold = 0.5f;       //for confidence 
             const float nmsThreshold = 0.3f;    //threshold for nms
 
-            var detections = ExtractYolo2Results(outs, image, threshold, nmsThreshold, 1.0f);
+            var detections = ExtractYolo2Results(outs, image, threshold, nmsThreshold);
             blob.Dispose();
 
-            foreach(var output in outs)
+            foreach (var output in outs)
             {
                 output.Dispose();
             }
@@ -76,7 +74,7 @@ namespace VideoFrameAnalyzer
             return detections;
         }
 
-        private DnnDetectedObject[] ExtractYolo2Results(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, float scaleFactor, bool nms = true)
+        private DnnDetectedObject[] ExtractYolo2Results(IEnumerable<Mat> output, Mat image, float threshold, float nmsThreshold, bool nms = true)
         {
             var classIds = new List<int>();
             var confidences = new List<float>();
