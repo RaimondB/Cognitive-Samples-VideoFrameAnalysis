@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using VideoFrameAnalyzeStd.VideoCapturing;
 using System.Linq;
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 
 namespace VideoFrameAnalyzer
 {
@@ -99,13 +100,15 @@ namespace VideoFrameAnalyzer
         private Task _mergeTask = null;
 
         private bool disposedValue = false;
+        private ILogger _logger;
 
         #endregion Fields
 
         #region Methods
 
-        public MultiFrameGrabber()
+        public MultiFrameGrabber(ILogger<MultiFrameGrabber<TAnalysisResultType>> logger)
         {
+            _logger = logger;
         }
 
         /// <summary> (Only available in TRACE_GRABBER builds) logs a message. </summary>
@@ -114,7 +117,8 @@ namespace VideoFrameAnalyzer
         [Conditional("TRACE_GRABBER")]
         protected void LogMessage(string format, params object[] args)
         {
-            ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
+            //ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
+            _logger.LogInformation(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
         protected async Task<(bool, TResult)> DoWithTimeout<TResult>(Func<Task<TResult>> func, TimeSpan timeout)
@@ -210,7 +214,7 @@ namespace VideoFrameAnalyzer
 
         public void StartProcessingFileAsync(string fileName, double overrideFPS = 0, bool isContinuousStream = true, RotateFlags? rotateFlags = null)
         {
-            VideoStream vs = new VideoStream("first", fileName, overrideFPS, isContinuousStream, rotateFlags);
+            VideoStream vs = new VideoStream(_logger, "first", fileName, overrideFPS, isContinuousStream, rotateFlags);
 
             _streams.Add(vs);
 

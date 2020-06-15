@@ -449,7 +449,8 @@ namespace LiveCameraSample
             return Task.FromResult(result);
         }
 
-        private Yolo3DnnDetector _dnnDetector = new Yolo3DnnDetector();
+        //TODO fix constructor
+        private Yolo3DnnDetector _dnnDetector = null;// new Yolo3DnnDetector();
 
         private Task<LiveCameraResult> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
         {

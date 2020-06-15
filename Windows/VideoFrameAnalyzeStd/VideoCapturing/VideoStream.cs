@@ -1,5 +1,6 @@
 ﻿//#define TRACE_GRABBER
 
+using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 using System;
 using System.Diagnostics;
@@ -30,8 +31,9 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
         private bool _stopping;
         private bool disposedValue;
         private Task _executionTask;
+        private ILogger _logger;
 
-        public VideoStream(string streamName, string path, double fps = 0, bool isContinuous = true, RotateFlags? rotateFlags = null)
+        public VideoStream(ILogger logger, string streamName, string path, double fps = 0, bool isContinuous = true, RotateFlags? rotateFlags = null)
         {
             Path = path;
             _fps = fps;
@@ -39,12 +41,14 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
             IsContinuous = isContinuous;
             RotateFlags = rotateFlags;
             _stopping = false;
+            _logger = logger;
         }
 
         [Conditional("TRACE_GRABBER")]
-        private static void LogMessage(string format, params object[] args)
+        private void LogMessage(string format, params object[] args)
         {
-            ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
+            //ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
+            _logger.LogInformation(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
         public VideoCapture InitCapture()
@@ -74,81 +78,91 @@ namespace VideoFrameAnalyzeStd.VideoCapturing
         {
             _executionTask = Task.Run(async () =>
             {
-                using (var reader = this.InitCapture())
+                while (!_stopping)
                 {
-                    var width = reader.FrameWidth;
-                    var height = reader.FrameHeight;
-                    int frameCount = 0;
-                    int delayMs = (int)(500.0 / this.Fps);
-
-                    var writer = outputChannel.Writer;
-                    Mat imageBuffer = new Mat();
-                    Mat publishedImage;
-
-                    var nextpublicationTime = DateTime.Now;
-                    while (!_stopping)
+                    try
                     {
-                        var startTime = DateTime.Now;
-                        // Grab single frame.
-                        var timestamp = DateTime.Now;
-
-                        bool success = reader.Read(imageBuffer);
-                        frameCount++;
-
-                        var endTime = DateTime.Now;
-                        //LogMessage("Producer: frame-grab took {0} ms", (endTime - startTime).Milliseconds);
-
-                        if (!success)
+                        using (var reader = this.InitCapture())
                         {
-                            // If we've reached the end of the video, stop here.
-                            if (!IsContinuous)
+                            var width = reader.FrameWidth;
+                            var height = reader.FrameHeight;
+                            int frameCount = 0;
+                            int delayMs = (int)(500.0 / this.Fps);
+
+                            var writer = outputChannel.Writer;
+                            Mat imageBuffer = new Mat();
+                            Mat publishedImage;
+
+                            var nextpublicationTime = DateTime.Now;
+                            while (!_stopping)
                             {
-                                LogMessage("Producer: null frame from video file, stop!");
-                                // This will call StopProcessing on a new thread.
-                                _stopping = true;
-                                writer.Complete();
-                                // Break out of the loop to make sure we don't try grabbing more
-                                // frames.
-                                break;
-                            }
-                            else
-                            {
-                                // If failed on live camera, try again.
-                                LogMessage("Producer: null frame from live camera, continue!");
-                                continue;
+                                var startTime = DateTime.Now;
+                                // Grab single frame.
+                                var timestamp = DateTime.Now;
+
+                                bool success = reader.Read(imageBuffer);
+                                frameCount++;
+
+                                var endTime = DateTime.Now;
+                                //LogMessage("Producer: frame-grab took {0} ms", (endTime - startTime).Milliseconds);
+
+                                if (!success)
+                                {
+                                    // If we've reached the end of the video, stop here.
+                                    if (!IsContinuous)
+                                    {
+                                        LogMessage("Producer: null frame from video file, stop!");
+                                        // This will call StopProcessing on a new thread.
+                                        _stopping = true;
+                                        writer.Complete();
+                                        // Break out of the loop to make sure we don't try grabbing more
+                                        // frames.
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        // If failed on live camera, try again.
+                                        LogMessage("Producer: null frame from live camera, continue!");
+                                        continue;
+                                    }
+                                }
+
+                                if (timestamp > nextpublicationTime)
+                                {
+                                    LogMessage("Producer: create frame to publish:");
+                                    nextpublicationTime = timestamp + publicationInterval;
+                                    if (RotateFlags.HasValue)
+                                    {
+                                        Mat rotImage = new Mat();
+                                        Cv2.Rotate(imageBuffer, rotImage, RotateFlags.Value);
+
+                                        publishedImage = rotImage;
+                                    }
+                                    else
+                                    {
+                                        Mat cloneImage = new Mat();
+                                        Cv2.CopyTo(imageBuffer, cloneImage);
+
+                                        publishedImage = cloneImage;
+                                    }
+
+                                    // Package the image for submission.
+                                    VideoFrameMetadata meta;
+                                    meta.Index = frameCount;
+                                    meta.Timestamp = timestamp;
+                                    VideoFrame vframe = new VideoFrame(publishedImage, meta);
+
+                                    LogMessage("Producer: do publishing");
+                                    var writeResult = writer.TryWrite(vframe);
+                                }
+                                //Thread.Sleep(delayMs);
+                                await Task.Delay(delayMs).ConfigureAwait(false);
                             }
                         }
-
-                        if (timestamp > nextpublicationTime)
-                        {
-                            LogMessage("Producer: create frame to publish:");
-                            nextpublicationTime = timestamp + publicationInterval;
-                            if (RotateFlags.HasValue)
-                            {
-                                Mat rotImage = new Mat();
-                                Cv2.Rotate(imageBuffer, rotImage, RotateFlags.Value);
-
-                                publishedImage = rotImage;
-                            }
-                            else
-                            {
-                                Mat cloneImage = new Mat();
-                                Cv2.CopyTo(imageBuffer, cloneImage);
-
-                                publishedImage = cloneImage;
-                            }
-
-                            // Package the image for submission.
-                            VideoFrameMetadata meta;
-                            meta.Index = frameCount;
-                            meta.Timestamp = timestamp;
-                            VideoFrame vframe = new VideoFrame(publishedImage, meta);
-
-                            LogMessage("Producer: do publishing");
-                            var writeResult = writer.TryWrite(vframe);
-                        }
-                        //Thread.Sleep(delayMs);
-                        await Task.Delay(delayMs).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Exception in processes videostream {name}, restarting", this.StreamName);
                     }
                 }
             });

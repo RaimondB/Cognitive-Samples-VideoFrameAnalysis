@@ -1,13 +1,15 @@
-﻿using OpenCvSharp;
+﻿using Microsoft.Extensions.Logging;
+using OpenCvSharp;
 using OpenCvSharp.Dnn;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using VideoFrameAnalyzeStd.Detection;
 
 namespace VideoFrameAnalyzer
 {
-    public class Yolo2DnnDetector
+    public class Yolo2DnnDetector : IDnnDetector
     {
         string[] _outNames;
         //private static string prott1 = @"C:\Users\Raimo\Downloads\MobileNetSSD_deploy.prototxt";
@@ -38,9 +40,12 @@ namespace VideoFrameAnalyzer
 
 
         private OpenCvSharp.Dnn.Net nnet;
+        private readonly ILogger _logger;
 
-        public Yolo2DnnDetector()
+        public Yolo2DnnDetector(ILogger<IDnnDetector> logger)
         {
+            _logger = logger;
+
             nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromDarknet(Cfg, Weight);
             //nnet.SetPreferableBackend(Net.Backend.INFERENCE_ENGINE);
             //nnet.SetPreferableTarget(Net.Target.CPU);
@@ -131,7 +136,7 @@ namespace VideoFrameAnalyzer
             else
             {
                 CvDnn.NMSBoxes(boxes, confidences, threshold, nmsThreshold, out indices);
-                ConcurrentLogger.WriteLine($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
+                _logger.LogInformation($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
             }
 
             var result = new List<DnnDetectedObject>();

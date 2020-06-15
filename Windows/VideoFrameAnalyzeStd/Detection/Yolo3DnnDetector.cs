@@ -1,44 +1,64 @@
-﻿using OpenCvSharp;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using OpenCvSharp;
 using OpenCvSharp.Dnn;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
+using VideoFrameAnalyzeStd.Detection;
 
 namespace VideoFrameAnalyzer
 {
-    public class Yolo3DnnDetector
+    public class Yolo3DnnDetector : IDnnDetector
     {
-        string[] _outNames;
-
-        private const string DataRoot = @"C:\Users\raimo\OneDrive\Repos\Cognitive-Samples-VideoFrameAnalysis\YoloData";
+        private readonly ILogger _logger;
+        private readonly IConfiguration _configuration;
 
         //YOLOv3
         //https://github.com/pjreddie/darknet/blob/master/cfg/yolov3.cfg
-        private const string Cfg = DataRoot + @"\yolov3.cfg";
+        private string Cfg;
 
         //https://pjreddie.com/media/files/yolov3.weights
-        private const string Weight = DataRoot + @"\yolov3.weights";
+        private string Weight;
 
         //https://github.com/pjreddie/darknet/blob/master/data/coco.names
-        private const string Names = DataRoot + @"\coco.names";
+        private string Names;
 
-        //random assign color to each label
-        private static readonly Scalar[] Colors = Enumerable.Repeat(false, 80).Select(x => Scalar.RandomColor()).ToArray();
-
-        //get labels from coco.names
-        private static readonly string[] Labels = File.ReadAllLines(Names).ToArray();
-
-        private OpenCvSharp.Dnn.Net nnet;
+        private readonly Scalar[] Colors;
+        private readonly string[] Labels;
+        private readonly OpenCvSharp.Dnn.Net nnet;
         private Mat[] outs;
+        private readonly string[] _outNames;
 
-        public Yolo3DnnDetector()
+        public Yolo3DnnDetector(ILogger<IDnnDetector> logger, IConfiguration configuration)
         {
+            _logger = logger;
+            _configuration = configuration;
+            ReadConfig(configuration);
+
+            //random assign color to each label
+            Labels = File.ReadAllLines(Names).ToArray();
+
+            //get labels from coco.names
+            Colors = Enumerable.Repeat(false, Labels.Length).Select(x => Scalar.RandomColor()).ToArray();
+
             nnet = OpenCvSharp.Dnn.CvDnn.ReadNetFromDarknet(Cfg, Weight);
             //nnet.SetPreferableBackend(Net.Backend.INFERENCE_ENGINE);
             //nnet.SetPreferableTarget(Net.Target.CPU);
             _outNames = nnet.GetUnconnectedOutLayersNames();
-            outs = Enumerable.Repeat(_, _outNames.Length).Select(_ => new Mat()).ToArray();
+            outs = Enumerable.Repeat(false, _outNames.Length).Select(_ => new Mat()).ToArray();
+        }
+
+        private void ReadConfig(IConfiguration configuration)
+        {
+            var options = new Yolo3Options();
+            configuration.GetSection(Yolo3Options.Yolo3).Bind(options);
+
+            Cfg = Path.Combine(options.RootPath, options.ConfigFile);
+            Weight = Path.Combine(options.RootPath, options.WeightsFile);
+            Names = Path.Combine(options.RootPath, options.NamesFile);
         }
 
         public DnnDetectedObject[] ClassifyObjects(Mat image, Rect boxToAnalyze)
@@ -122,7 +142,7 @@ namespace VideoFrameAnalyzer
             else
             {
                 CvDnn.NMSBoxes(boxes, confidences, threshold, nmsThreshold, out indices);
-                ConcurrentLogger.WriteLine($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
+                _logger.LogInformation($"NMSBoxes drop {confidences.Count - indices.Length} overlapping result.");
             }
 
             var result = new List<DnnDetectedObject>();
