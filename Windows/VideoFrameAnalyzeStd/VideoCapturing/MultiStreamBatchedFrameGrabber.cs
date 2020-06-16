@@ -18,31 +18,31 @@ namespace VideoFrameAnalyzer
     /// <summary> A frame grabber. </summary>
     /// <typeparam name="TAnalysisResultType"> Type of the analysis result. This is the type that
     ///     the AnalysisFunction will return, when it calls some API on a video frame. </typeparam>
-    public class MultiFrameGrabber<TAnalysisResultType> : IDisposable
+    public class MultiStreamBatchedFrameGrabber<TAnalysisResultType> : IDisposable
     {
         #region Types
 
         /// <summary> Additional information for new frame events. </summary>
         /// <seealso cref="System.EventArgs"/>
-        public class NewFrameEventArgs : EventArgs
+        public class NewFramesEventArgs : EventArgs
         {
-            public NewFrameEventArgs(VideoFrame frame)
+            public NewFramesEventArgs(IList<VideoFrame> frame)
             {
                 Frame = frame;
             }
-            public VideoFrame Frame { get; }
+            public IList<VideoFrame> Frame { get; }
         }
 
         /// <summary> Additional information for new result events, which occur when an API call
         ///     returns. </summary>
         /// <seealso cref="System.EventArgs"/>
-        public class NewResultEventArgs : EventArgs
+        public class NewResultsEventArgs : EventArgs
         {
-            public NewResultEventArgs(VideoFrame frame)
+            public NewResultsEventArgs(IList<VideoFrame> frames)
             {
-                Frame = frame;
+                Frames = frames;
             }
-            public VideoFrame Frame { get; }
+            public IList<VideoFrame> Frames { get; }
             public TAnalysisResultType Analysis { get; set; } = default(TAnalysisResultType);
             public bool TimedOut { get; set; } = false;
             public Exception Exception { get; set; } = null;
@@ -62,8 +62,7 @@ namespace VideoFrameAnalyzer
         ///     var grabber = new FrameGrabber();
         ///     grabber.AnalysisFunction = async (frame) =&gt; { return await client.RecognizeAsync(frame.Image.ToMemoryStream(".jpg")); };
         ///     </code></example>
-        public Func<VideoFrame, Task<TAnalysisResultType>> AnalysisFunction { get; set; } = null;
-        public Func<IList<VideoFrame>, Task<IList<TAnalysisResultType>>> BatchedAnalysisFunction { get; set; } = null;
+        public Func<IList<VideoFrame>, Task<TAnalysisResultType>> AnalysisFunction { get; set; } = null;
 
         /// <summary> Gets or sets the analysis timeout. When executing the
         ///     <see cref="AnalysisFunction"/> on a video frame, if the call doesn't return a
@@ -87,9 +86,6 @@ namespace VideoFrameAnalyzer
         //    }
         //}
 
-        public int Width { get; protected set; }
-        public int Height { get; protected set; }
-
         #endregion Properties
 
         #region Fields
@@ -107,7 +103,7 @@ namespace VideoFrameAnalyzer
 
         #region Methods
 
-        public MultiFrameGrabber(ILogger<MultiFrameGrabber<TAnalysisResultType>> logger)
+        public MultiStreamBatchedFrameGrabber(ILogger<MultiFrameGrabber<TAnalysisResultType>> logger)
         {
             _logger = logger;
         }
@@ -118,31 +114,22 @@ namespace VideoFrameAnalyzer
         [Conditional("TRACE_GRABBER")]
         protected void LogMessage(string format, params object[] args)
         {
-            //ConcurrentLogger.WriteLine(String.Format(CultureInfo.InvariantCulture, format, args));
             _logger.LogInformation(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
-        protected async Task<(bool, TResult)> DoWithTimeout<TResult>(Func<Task<TResult>> func, TimeSpan timeout)
+        [Conditional("TRACE_GRABBER")]
+        protected void LogDebug(string format, params object[] args)
         {
-            using (CancellationTokenSource source = new CancellationTokenSource())
-            {
-                source.CancelAfter(timeout);
-
-                try
-                {
-                    var result = await Task.Run(func, source.Token);
-                    return (true, result);
-                }
-                catch (OperationCanceledException ex)
-                {
-                    LogMessage($"Exception in dowithtimeout:{ex.Message}");
-                    return (false, default(TResult));
-                }
-            }
+            _logger.LogDebug(String.Format(CultureInfo.InvariantCulture, format, args));
         }
 
+        [Conditional("TRACE_GRABBER")]
+        protected void LogWarning(string format, params object[] args)
+        {
+            _logger.LogDebug(String.Format(CultureInfo.InvariantCulture, format, args));
+        }
 
-        protected async Task<NewResultEventArgs> DoAnalyzeFrame(VideoFrame frame)
+        protected async Task<NewResultsEventArgs> DoAnalyzeFrames(IList<VideoFrame> frames)
         {
             using (CancellationTokenSource source = new CancellationTokenSource())
             {
@@ -151,9 +138,9 @@ namespace VideoFrameAnalyzer
                 var fcn = AnalysisFunction;
                 if (fcn != null)
                 {
-                    NewResultEventArgs output = new NewResultEventArgs(frame);
-                    var task = fcn(frame);
-                    LogMessage("DoAnalysis: started task {0}", task.Id);
+                    NewResultsEventArgs output = new NewResultsEventArgs(frames);
+                    var task = fcn(frames);
+                    LogDebug("DoAnalysis: started task {0}", task.Id);
                     try
                     {
                         if (task == await Task.WhenAny(task, Task.Delay(AnalysisTimeout, source.Token)))
@@ -163,14 +150,14 @@ namespace VideoFrameAnalyzer
                         }
                         else
                         {
-                            LogMessage("DoAnalysis: Timeout from task {0}", task.Id);
+                            LogWarning("DoAnalysis: Timeout from task {0}", task.Id);
                             output.TimedOut = true;
                         }
                     }
                     catch (Exception ae)
                     {
                         output.Exception = ae;
-                        LogMessage("DoAnalysis: Exception from task {0}:{1}", task.Id, ae.Message);
+                        LogWarning("DoAnalysis: Exception from task {0}:{1}", task.Id, ae.Message);
                     }
 
                     LogMessage("DoAnalysis: returned from task {0}", task.Id);
@@ -201,7 +188,7 @@ namespace VideoFrameAnalyzer
                 });
 
         private static Channel<IList<VideoFrame>> CreateMergeChannel() =>
-    Channel.CreateBounded<IList<VideoFrame>>(
+            Channel.CreateBounded<IList<VideoFrame>>(
         new BoundedChannelOptions(2)
         {
             AllowSynchronousContinuations = false,
@@ -282,16 +269,13 @@ namespace VideoFrameAnalyzer
                     {
                         var vframes = await reader.ReadAsync();
 
-                        foreach (var vframe in vframes)
-                        {
-                            var startTime = DateTime.Now;
+                        var startTime = DateTime.Now;
 
-                            var result = await DoAnalyzeFrame(vframe);
+                        var result = await DoAnalyzeFrames(vframes);
 
-                            LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).Milliseconds);
+                        LogMessage("Consumer: analysis took {0} ms", (DateTime.Now - startTime).TotalMilliseconds);
 
-                            OnNewResultAvailable(result);
-                        }
+                        OnNewResultAvailable(result);
                     }
                     catch (Exception ex)
                     {
@@ -309,8 +293,6 @@ namespace VideoFrameAnalyzer
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "Sync needed because of eventhandlers")]
         public async Task StopProcessingAsync()
         {
-            OnProcessingStopping();
-
             _stopping = true;
 
             if (_consumerTask != null)
@@ -333,46 +315,20 @@ namespace VideoFrameAnalyzer
             _streams.Clear();
 
             _stopping = false;
-
-            OnProcessingStopped();
-        }
-
-        /// <summary> Raises the processing starting event. </summary>
-        protected void OnProcessingStarting()
-        {
-            ProcessingStarting?.Invoke(this, null);
-        }
-
-        /// <summary> Raises the processing started event. </summary>
-        protected void OnProcessingStarted()
-        {
-            ProcessingStarted?.Invoke(this, null);
-        }
-
-        /// <summary> Raises the processing stopping event. </summary>
-        protected void OnProcessingStopping()
-        {
-            ProcessingStopping?.Invoke(this, null);
-        }
-
-        /// <summary> Raises the processing stopped event. </summary>
-        protected void OnProcessingStopped()
-        {
-            ProcessingStopped?.Invoke(this, null);
         }
 
         /// <summary> Raises the new frame provided event. </summary>
         /// <param name="frame"> The frame. </param>
-        protected void OnNewFrameProvided(VideoFrame frame)
+        protected void OnNewFrameProvided(IList<VideoFrame> frames)
         {
-            NewFrameProvided?.Invoke(this, new NewFrameEventArgs(frame));
+            NewFramesProvided?.Invoke(this, new NewFramesEventArgs(frames));
         }
 
         /// <summary> Raises the new result event. </summary>
         /// <param name="args"> Event information to send to registered event handlers. </param>
-        protected void OnNewResultAvailable(NewResultEventArgs args)
+        protected void OnNewResultAvailable(NewResultsEventArgs args)
         {
-            NewResultAvailable?.Invoke(this, args);
+            NewResultsAvailable?.Invoke(this, args);
         }
 
         protected virtual void Dispose(bool disposing)
@@ -401,12 +357,8 @@ namespace VideoFrameAnalyzer
 
         #region Events
 
-        public event EventHandler ProcessingStarting;
-        public event EventHandler ProcessingStarted;
-        public event EventHandler ProcessingStopping;
-        public event EventHandler ProcessingStopped;
-        public event EventHandler<NewFrameEventArgs> NewFrameProvided;
-        public event EventHandler<NewResultEventArgs> NewResultAvailable;
+        public event EventHandler<NewFramesEventArgs> NewFramesProvided;
+        public event EventHandler<NewResultsEventArgs> NewResultsAvailable;
 
         #endregion Events
     }

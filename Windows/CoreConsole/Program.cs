@@ -18,10 +18,16 @@ namespace CameraWatcher
             Host.CreateDefaultBuilder(args)
             .ConfigureServices((hostContext, services) =>
             {
-                services.AddHostedService<CameraWatcherService>();
-                services.AddSingleton<IDnnDetector, Yolo3DnnDetector>();
-                services.AddSingleton<MultiFrameGrabber<DnnDetectedObject[]>,
-                    MultiFrameGrabber<DnnDetectedObject[]>>();
+                //services.AddHostedService<CameraWatcherService>();
+                //services.AddSingleton<IDnnDetector, Yolo3DnnDetector>();
+                //services.AddSingleton<MultiFrameGrabber<DnnDetectedObject[]>,
+                //    MultiFrameGrabber<DnnDetectedObject[]>>();
+                //services.AddSingleton<MultiFrameGrabber<DnnDetectedObject[]>,
+                //    MultiFrameGrabber<DnnDetectedObject[]>>();
+                services.AddHostedService<BatchedCameraWatcherService>();
+                services.AddSingleton<IBatchedDnnDetector, Yolo3BatchedDnnDetector>();
+                services.AddSingleton<MultiStreamBatchedFrameGrabber<DnnDetectedObject[][]>,
+                    MultiStreamBatchedFrameGrabber<DnnDetectedObject[][]>>();
             })
             .ConfigureLogging(logging =>
             {

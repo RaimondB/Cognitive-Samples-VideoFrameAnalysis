@@ -15,21 +15,19 @@ using VideoFrameAnalyzeStd.Detection;
 
 namespace CameraWatcher
 {
-    public class CameraWatcherService : IHostedService
+    public class BatchedCameraWatcherService : IHostedService
     {
         private IConfigurationRoot ConfigRoot;
         //private ReportConfig _config;
         private readonly ILogger _logger;
         private readonly IHostApplicationLifetime _appLifetime;
-        private readonly IDnnDetector _detector;
-        private readonly IBatchedDnnDetector _bactchedDetector;
+        private readonly IBatchedDnnDetector _detector;
 
-        private readonly MultiFrameGrabber<DnnDetectedObject[]> _grabber;
+        private readonly MultiStreamBatchedFrameGrabber<DnnDetectedObject[][]> _grabber;
 
-        public CameraWatcherService( ILogger<CameraWatcherService> logger,
-                                     IDnnDetector detector,
-                                     IBatchedDnnDetector batchedDetector,
-                                     MultiFrameGrabber<DnnDetectedObject[]> grabber,
+        public BatchedCameraWatcherService( ILogger<CameraWatcherService> logger,
+                                        IBatchedDnnDetector detector,
+                                        MultiStreamBatchedFrameGrabber<DnnDetectedObject[][]> grabber,
                                        IHostApplicationLifetime appLifetime,
                                        IConfiguration configRoot)
         {
@@ -37,7 +35,6 @@ namespace CameraWatcher
             _logger = logger;
             _appLifetime = appLifetime;
             _detector = detector;
-            _bactchedDetector = batchedDetector;
             _grabber = grabber;
         }
 
@@ -63,9 +60,9 @@ namespace CameraWatcher
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
 
-            _grabber.AnalysisFunction = OpenCVDNNYoloPeopleDetect;
+            _grabber.AnalysisFunction = OpenCVDNNYoloBatchDetect;
 
-            _grabber.NewResultAvailable += (s, e) =>
+            _grabber.NewResultsAvailable += (s, e) =>
             {
                 if (e.TimedOut)
                     _logger.LogWarning("Analysis function timed out.");
@@ -73,22 +70,29 @@ namespace CameraWatcher
                     _logger.LogError(e.Exception, "Analysis function threw an exception");
                 else
                 {
-                    using Mat inputImage = e.Frame.Image;
-
-                    _logger.LogInformation($"New result received for frame acquired at {e.Frame.Metadata.Timestamp}. {e.Analysis.Length} objects detected");
-                    foreach (var dObj in e.Analysis)
+                    for(int index = 0; index < e.Frames.Count; index++)
                     {
-                        _logger.LogInformation($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
-                    }
+                        var frame = e.Frames[index];
+                        var analysis = e.Analysis[index];
 
-                    if (e.Analysis.Length > 0 && e.Analysis.Any(o => o.Label == "person"))
-                    {
-                        using (var result = Visualizer.AnnotateImage(e.Frame.Image, e.Analysis))
+                        using Mat inputImage = frame.Image;
+
+                        _logger.LogInformation($"New result received for frame acquired at {frame.Metadata.Timestamp}. {analysis.Length} objects detected");
+                        
+                        foreach (var dObj in analysis)
                         {
-                            var filename = $".\\captures\\obj-{GetTimestampedSortable(e.Frame.Metadata)}.jpg";
-                            Cv2.ImWrite(filename, result);
-                            _logger.LogInformation($"Interesting Detection Saved: {filename}");
+                            _logger.LogInformation($"Detected: {dObj.Label} ; prob: {dObj.Probability}");
                         }
+
+                        if (analysis.Length > 0 && analysis.Any(o => o.Label == "person"))
+                        {
+                            using (var result = Visualizer.AnnotateImage(frame.Image, analysis.ToArray()))
+                            {
+                                var filename = $".\\captures\\obj-{GetTimestampedSortable(frame.Metadata)}.jpg";
+                                Cv2.ImWrite(filename, result);
+                                _logger.LogInformation($"Interesting Detection Saved: {filename}");
+                            }
+                        } 
                     }
                 }
             };
@@ -97,11 +101,11 @@ namespace CameraWatcher
             // See also TriggerAnalysisOnPredicate
             _grabber.TriggerAnalysisOnInterval(TimeSpan.FromMilliseconds(3000));
 
-            //await grabber.StartProcessingFileAsync(
+            //_grabber.StartProcessingFileAsync(
             //    @"C:\Users\raimo\Downloads\Side Door - 20200518 - 164300_Trim.mp4",
             //    isContinuousStream: false, rotateFlags: RotateFlags.Rotate90Clockwise);
 
-            //await grabber.StartProcessingFileAsync(
+            //_grabber.StartProcessingFileAsync(
             //      @"C:\Users\raimo\Downloads\HIKVISION - DS-2CD2143G0-I - 20200518 - 194212-264.mp4",
             //      isContinuousStream: false);
 
@@ -134,33 +138,35 @@ namespace CameraWatcher
             return $"{metaData.Timestamp:yyyyMMddTHHmmss}-{metaData.Index:00000}";
         }
 
-        private Task<DnnDetectedObject[]> OpenCVDNNYoloPeopleDetect(VideoFrame frame)
+        private Task<DnnDetectedObject[][]> OpenCVDNNYoloBatchDetect(IList<VideoFrame> frames)
         {
-            var image = frame.Image;
-            if (image == null || image.Width <= 0 || image.Height <= 0)
-            {
-                return Task.FromResult(Array.Empty<DnnDetectedObject>());
-            }
+            //if (image == null || image.Width <= 0 || image.Height <= 0)
+            //{
+            //    return Task.FromResult(Array.Empty<DnnDetectedObject>());
+            //}
 
-            Func<DnnDetectedObject[]> detector = () =>
-            {
-                DnnDetectedObject[] result;
+            var images = frames.Select(f => f.Image);
 
-                try
-                {
+
+            Func<DnnDetectedObject[][]> detector = () =>
+            {
+                DnnDetectedObject[][] result;
+
+                //try
+                //{
                     var watch = new Stopwatch();
                     watch.Start();
 
-                    result = _detector.ClassifyObjects(image, Rect.Empty);
+                    result = _detector.ClassifyObjects(images);
 
                     watch.Stop();
                     _logger.LogInformation($"Classifiy-objects ms:{watch.ElapsedMilliseconds}");
-                }
-                catch (Exception ex)
-                {
-                    result = Array.Empty<DnnDetectedObject>();
-                    _logger.LogError(ex, $"Exception in analysis:{ex.Message}");
-                }
+                //}
+                //catch (Exception ex)
+                //{
+                //    result = (DnnDetectedObject[][])new List<List<DnnDetectedObject>>(0);
+                //    _logger.LogError(ex, $"Exception in analysis:{ex.Message}");
+                //}
 
                 return result;
             };
@@ -170,6 +176,5 @@ namespace CameraWatcher
 
             return Task.Run(() => detector());
         }
-
     }
 }
